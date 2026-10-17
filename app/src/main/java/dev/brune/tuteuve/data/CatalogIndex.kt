@@ -9,7 +9,7 @@ class CatalogIndex(private val channels: List<Channel>) {
         channelEntries.forEach { (_, path) ->
             for (depth in 1..path.size) {
                 val prefix = path.take(depth)
-                put(prefix, getOrDefault(prefix, 0) + 1)
+                put(prefix, (get(prefix) ?: 0) + 1)
             }
         }
     }

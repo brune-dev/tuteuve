@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             var channels by remember { mutableStateOf(emptyList<Channel>()) }
             var catalog by remember { mutableStateOf(CatalogIndex(emptyList())) }
+            var catalogUi by remember { mutableStateOf(CatalogUiState()) }
             var screen by remember { mutableStateOf(Screen.Home) }
             var playing by remember { mutableStateOf<Channel?>(null) }
             var preview by remember { mutableStateOf<Channel?>(null) }
@@ -160,6 +161,8 @@ class MainActivity : ComponentActivity() {
                             Screen.Channels -> ChannelsScreen(
                                 channels = channels,
                                 index = catalog,
+                                uiState = catalogUi,
+                                onUiStateChange = { catalogUi = it },
                                 importing = importing,
                                 onImport = importAction,
                                 preview = preview,

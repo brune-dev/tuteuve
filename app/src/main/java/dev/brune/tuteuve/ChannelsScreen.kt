@@ -61,10 +61,18 @@ private val panel = Color(0xFF142539)
 private val subtle = Color(0xFFA9BED1)
 private val mint = Color(0xFF8DF0CD)
 
+internal data class CatalogUiState(
+    val folder: List<String> = emptyList(),
+    val query: String = "",
+    val grid: Boolean = false,
+)
+
 @Composable
 internal fun ChannelsScreen(
     channels: List<Channel>,
     index: CatalogIndex,
+    uiState: CatalogUiState,
+    onUiStateChange: (CatalogUiState) -> Unit,
     importing: Boolean,
     onImport: () -> Unit,
     preview: Channel?,
@@ -73,14 +81,14 @@ internal fun ChannelsScreen(
     onOpenDrawer: () -> Unit,
     lifecycle: Lifecycle,
 ) {
-    var folder by remember { mutableStateOf(emptyList<String>()) }
-    var query by remember { mutableStateOf("") }
-    var grid by remember { mutableStateOf(false) }
+    val folder = uiState.folder
+    val query = uiState.query
+    val grid = uiState.grid
     val visible = remember(index, folder, query) { index.channels(folder, query) }
     val childFolders = remember(index, folder) { index.folders(folder) }
     val fullScreenFocus = remember { FocusRequester() }
 
-    BackHandler(folder.isNotEmpty()) { folder = folder.dropLast(1) }
+    BackHandler(folder.isNotEmpty()) { onUiStateChange(uiState.copy(folder = folder.dropLast(1))) }
     LaunchedEffect(preview) {
         if (preview != null) fullScreenFocus.requestFocus()
     }
@@ -95,12 +103,12 @@ internal fun ChannelsScreen(
         ) {
             Text("CARPETAS", color = subtle, fontSize = 13.sp)
             if (folder.isNotEmpty()) {
-                Button(onClick = { folder = folder.dropLast(1) }, modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { onUiStateChange(uiState.copy(folder = folder.dropLast(1))) }, modifier = Modifier.fillMaxWidth()) {
                     Text("← Volver")
                 }
             }
             Button(
-                onClick = { folder = emptyList() },
+                onClick = { onUiStateChange(uiState.copy(folder = emptyList())) },
                 modifier = Modifier.fillMaxWidth().onPreviewKeyEvent {
                     if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionLeft) {
                         onOpenDrawer(); true
@@ -110,10 +118,11 @@ internal fun ChannelsScreen(
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(childFolders, key = { it.path.joinToString("\u0000") }) { item ->
                     Button(
-                        onClick = { folder = item.path },
+                        onClick = { onUiStateChange(uiState.copy(folder = item.path)) },
                         modifier = Modifier.fillMaxWidth().onPreviewKeyEvent {
                             if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionLeft) {
-                                if (folder.isEmpty()) onOpenDrawer() else folder = folder.dropLast(1)
+                                if (folder.isEmpty()) onOpenDrawer()
+                                else onUiStateChange(uiState.copy(folder = folder.dropLast(1)))
                                 true
                             } else false
                         },
@@ -127,12 +136,12 @@ internal fun ChannelsScreen(
                     Text(folder.lastOrNull() ?: "Todos", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     Text("${visible.size} canales", color = subtle, fontSize = 14.sp)
                 }
-                Button(onClick = { grid = !grid }) { Text(if (grid) "☰ Lista" else "▦ Cuadrícula") }
+                Button(onClick = { onUiStateChange(uiState.copy(grid = !grid)) }) { Text(if (grid) "☰ Lista" else "▦ Cuadrícula") }
                 Button(onClick = onImport, enabled = !importing) { Text("Añadir fuente") }
             }
             BasicTextField(
                 value = query,
-                onValueChange = { query = it.take(120) },
+                onValueChange = { onUiStateChange(uiState.copy(query = it.take(120))) },
                 singleLine = true,
                 textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 17.sp),
                 modifier = Modifier.fillMaxWidth().background(panel, RoundedCornerShape(8.dp)).padding(12.dp),
