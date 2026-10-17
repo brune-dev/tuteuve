@@ -18,6 +18,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Button
@@ -25,6 +26,7 @@ import androidx.tv.material3.Text
 import dev.brune.tuteuve.data.Channel
 
 @Composable
+@OptIn(UnstableApi::class)
 internal fun PlayerScreen(channel: Channel, lifecycle: Lifecycle, onBack: () -> Unit) {
     val context = LocalContext.current
     val player = remember(channel.id) {

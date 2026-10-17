@@ -30,9 +30,13 @@ class M3uParserTest {
             https://192.168.1.1/live
             #EXTINF:-1,User info
             https://name:secret@example.org/live
+            #EXTINF:-1,Short loopback
+            https://127.1/live
+            #EXTINF:-1,Decimal loopback
+            https://2130706433/live
         """.trimIndent())
         assertTrue(result.channels.isEmpty())
-        assertEquals(4, result.ignoredEntries)
+        assertEquals(6, result.ignoredEntries)
         assertEquals(1, result.httpEntries)
     }
 

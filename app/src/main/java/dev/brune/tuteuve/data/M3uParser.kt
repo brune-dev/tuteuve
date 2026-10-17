@@ -78,8 +78,12 @@ class M3uParser {
 
     private fun isPrivateIpLiteral(host: String): Boolean {
         if (host.contains(':')) return true // IPv6 needs a dedicated allowlist review.
+        if (host.startsWith("0x") || host.split('.').any { it.startsWith("0x") }) return true
+        if (!host.matches(NUMERIC_HOST)) return false
         val octets = host.split('.').map { it.toIntOrNull() }
-        if (octets.size != 4 || octets.any { it == null || it !in 0..255 }) return false
+        // Reject short, decimal-integer and octal-like addresses rather than letting the OS reinterpret them.
+        if (octets.size != 4 || octets.any { it == null || it !in 0..255 } ||
+            host.split('.').any { it.length > 1 && it.startsWith('0') }) return true
         val a = octets[0]!!
         val b = octets[1]!!
         return a == 0 || a == 10 || a == 127 || a >= 224 ||
@@ -103,6 +107,7 @@ class M3uParser {
         const val MAX_LINE_LENGTH = 8_192
         const val MAX_NAME_LENGTH = 160
         val GROUP_ATTRIBUTE = Regex("""group-title\s*=\s*"([^"]*)"""", RegexOption.IGNORE_CASE)
+        val NUMERIC_HOST = Regex("[0-9.]+")
     }
 }
 
