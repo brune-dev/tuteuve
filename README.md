@@ -26,7 +26,15 @@ El [prototipo visual aprobado](https://iptv-sala-prototipo.xcorreogenerico.chatg
 
 ### Compilar la rama de desarrollo
 
-Se necesitan JDK 17, Android SDK 36 y Gradle 8.13, o Android Studio con versiones compatibles. En la raíz del repositorio: `gradle :app:testDebugUnitTest :app:assembleDebug`. La compilación automática de GitHub ejecuta ambos pasos en cada pull request. `minSdk` es 23 (Android TV 6); la compatibilidad efectiva se verificará en un dispositivo Android TV 14 y en emuladores de versiones anteriores.
+Se necesitan JDK 17 y Android SDK 36. El proyecto incluye `gradlew` y `gradlew.bat`, que descargan Gradle 8.13 con verificación SHA-256; no hay que instalar Gradle manualmente. En Android Studio, selecciona JDK 17 como **Gradle JDK**. En PowerShell, si `java -version` aún muestra Java 8, establece JDK 17 para esa sesión:
+
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Java\jdk-17'
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+```
+
+La APK local queda en `app/build/outputs/apk/debug/app-debug.apk`. La compilación automática de GitHub ejecuta esas mismas comprobaciones en cada pull request. `minSdk` es 23 (Android TV 6); la compatibilidad efectiva se verificará en un dispositivo Android TV 14 y en emuladores de versiones anteriores.
 
 ## Comunidad
 
