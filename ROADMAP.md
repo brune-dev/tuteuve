@@ -43,18 +43,18 @@ Los issues se crean en GitHub con criterios de aceptación verificables. `P0` bl
 
 | Prioridad | Issue | Journey | Depende de |
 | --- | --- | --- | --- |
-| P0 | Base Android TV, CI y navegación con mando | J2 | — |
-| P0 | Fuentes M3U con nombre y múltiples listas | J1 | Base |
-| P0 | Catálogo por carpetas, búsqueda, cuadrícula/lista y foco | J2 | M3U |
-| P0 | Reproductor Media3, vista previa y calidad automática | J4 | M3U, Base |
-| P0 | EPG XMLTV y guía por carpetas | J3 | Catálogo |
-| P0 | Favoritos, listas propias y recientes persistentes | J2 | Catálogo |
-| P0 | Adaptador Xtream y protección de credenciales | J1 | Fuentes, Reproductor |
-| P0 | Pruebas en TV, privacidad y APK alpha | J1–J4 | Todos los P0 anteriores |
-| P1 | Grabación en primer plano: prueba de viabilidad | J5 | Reproductor |
-| P1 | Biblioteca y reproducción de archivos grabados | J5 | Grabación |
-| P1 | Avisos de programa | J6 | EPG |
-| P1 | NAS/USB y programación real de grabaciones | J7 | Grabación, Avisos |
+| P0 | [#1 Base Android TV, CI y navegación con mando](https://github.com/brune-dev/tuteuve/issues/1) | J2 | — |
+| P0 | [#2 Fuentes M3U con nombre y múltiples listas](https://github.com/brune-dev/tuteuve/issues/2) | J1 | #1 |
+| P0 | [#3 Catálogo por carpetas, búsqueda, cuadrícula/lista y foco](https://github.com/brune-dev/tuteuve/issues/3) | J2 | #2 |
+| P0 | [#4 Reproductor Media3, vista previa y calidad automática](https://github.com/brune-dev/tuteuve/issues/4) | J4 | #1, #2 |
+| P0 | [#5 EPG XMLTV y guía por carpetas](https://github.com/brune-dev/tuteuve/issues/5) | J3 | #2, #3 |
+| P0 | [#6 Favoritos, listas propias y recientes persistentes](https://github.com/brune-dev/tuteuve/issues/6) | J2 | #3 |
+| P0 | [#7 Adaptador Xtream y protección de credenciales](https://github.com/brune-dev/tuteuve/issues/7) | J1 | #2, #4 |
+| P0 | [#8 Pruebas en TV, privacidad y APK alpha](https://github.com/brune-dev/tuteuve/issues/8) | J1–J4 | #1–#7, con condición Xtream |
+| P1 | [#9 Grabación en primer plano: prueba de viabilidad](https://github.com/brune-dev/tuteuve/issues/9) | J5 | #4 |
+| P1 | [#10 Biblioteca y reproducción de archivos grabados](https://github.com/brune-dev/tuteuve/issues/10) | J5 | #9 |
+| P1 | [#11 Avisos de programa](https://github.com/brune-dev/tuteuve/issues/11) | J6 | #5 |
+| P1 | [#12 NAS/USB y programación real de grabaciones](https://github.com/brune-dev/tuteuve/issues/12) | J7 | #9–#11 |
 
 ## Criterios de salida de la alpha
 
