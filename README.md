@@ -1,6 +1,6 @@
 # tuteuve
 
-Reproductor IPTV libre, local y pensado para Google TV. El objetivo es ofrecer navegación con mando, guía diaria, listas, favoritos y reproducción de calidad sin suscripción. **El repositorio está en fase de planificación; todavía no contiene una APK funcional.**
+Reproductor IPTV libre, local y pensado para Google TV. El objetivo es ofrecer navegación con mando, guía diaria, listas, favoritos y reproducción de calidad sin suscripción. **El desarrollo Android ha comenzado; todavía no hay una APK alpha validada.**
 
 ## Visión
 
@@ -20,9 +20,13 @@ El [prototipo visual aprobado](https://iptv-sala-prototipo.xcorreogenerico.chatg
 
 ## Estado del proyecto
 
-1. Abrir los issues de la alpha y los de la fase siguiente.
-2. Crear el proyecto Android con Kotlin, Compose para TV y Media3.
-3. Entregar una APK alpha para instalación manual y publicar resultados de pruebas.
+1. Base Android TV en desarrollo: navegación, importación local M3U y reproducción Media3 inicial. La importación acepta por ahora emisiones HTTPS; las entradas no compatibles se omiten y se cuentan.
+2. Pendiente: comprobar la compilación, completar catálogo, vista previa, EPG y fuentes Xtream, y ejecutar la [auditoría de seguridad](SECURITY.md).
+3. Entregar una APK alpha para instalación manual solo tras superar las pruebas de calidad y seguridad.
+
+### Compilar la rama de desarrollo
+
+Se necesitan JDK 17, Android SDK 36 y Gradle 8.13, o Android Studio con versiones compatibles. En la raíz del repositorio: `gradle :app:testDebugUnitTest :app:assembleDebug`. La compilación automática de GitHub ejecuta ambos pasos en cada pull request. `minSdk` es 23 (Android TV 6); la compatibilidad efectiva se verificará en un dispositivo Android TV 14 y en emuladores de versiones anteriores.
 
 ## Comunidad
 
