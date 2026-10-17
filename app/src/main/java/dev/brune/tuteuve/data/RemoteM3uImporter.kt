@@ -10,7 +10,7 @@ import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
 
-enum class ImportFailureReason { ADDRESS, NAME, RESPONSE, CONTENT, DNS, TLS, NETWORK }
+enum class ImportFailureReason { ADDRESS, NAME, RESPONSE, CONTENT, XML_CONFIG, DNS, TLS, NETWORK }
 
 /** Deliberately carries no URL, credentials or response body. */
 class ImportFailure(val reason: ImportFailureReason) : Exception()

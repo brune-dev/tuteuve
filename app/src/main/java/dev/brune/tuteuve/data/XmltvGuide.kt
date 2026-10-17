@@ -1,10 +1,15 @@
 package dev.brune.tuteuve.data
 
 import java.io.InputStream
+import java.io.FilterReader
+import java.io.InputStreamReader
+import java.io.Reader
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import javax.xml.parsers.SAXParserFactory
+import javax.xml.parsers.ParserConfigurationException
+import org.xml.sax.InputSource
 import org.xml.sax.Attributes
 import org.xml.sax.SAXException
 import org.xml.sax.helpers.DefaultHandler
@@ -33,20 +38,19 @@ class EpgIndex(guide: EpgGuide) {
     }
 }
 
-/** Bounded SAX parsing with external entities and DTDs disabled. */
+/** Bounded SAX parsing; the reader rejects DTDs before the platform parser sees them. */
 class XmltvParser {
     fun parse(input: InputStream): EpgGuide {
-        val factory = SAXParserFactory.newInstance().apply {
+        val factory = try { SAXParserFactory.newInstance().apply {
             isNamespaceAware = false
-            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-            setFeature("http://xml.org/sax/features/external-general-entities", false)
-            setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-            setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
-            isXIncludeAware = false
-        }
+        } } catch (_: Exception) { throw XmltvConfigurationFailure() }
         val names = LinkedHashMap<String, String>()
         val programmes = ArrayList<EpgProgram>()
         val handler = object : DefaultHandler() {
+            var depth = 0
+            override fun resolveEntity(publicId: String?, systemId: String?): InputSource {
+                throw SAXException("External entities are not allowed")
+            }
             var channelId = ""
             var programChannel = ""
             var start = 0L
@@ -57,6 +61,8 @@ class XmltvParser {
             val value = StringBuilder()
 
             override fun startElement(uri: String?, localName: String?, qName: String, attributes: Attributes) {
+                depth++
+                if (depth > MAX_DEPTH) throw SAXException("XMLTV nesting limit")
                 when (qName) {
                     "channel" -> channelId = attributes.getValue("id").orEmpty().take(MAX_TEXT)
                     "programme" -> {
@@ -97,9 +103,15 @@ class XmltvParser {
                     "channel" -> channelId = ""
                 }
                 if (qName == collecting) collecting = ""
+                depth--
             }
         }
-        factory.newSAXParser().parse(BoundedXmlInputStream(input), handler)
+        try {
+            RejectingDtdReader(InputStreamReader(BoundedXmlInputStream(input), Charsets.UTF_8)).use { reader ->
+                factory.newSAXParser().parse(InputSource(reader), handler)
+            }
+        }
+        catch (_: ParserConfigurationException) { throw XmltvConfigurationFailure() }
         require(programmes.isNotEmpty()) { "Guía XMLTV sin programas válidos" }
         return EpgGuide(names, programmes.sortedWith(compareBy(EpgProgram::channelKey, EpgProgram::startMillis)))
     }
@@ -120,9 +132,12 @@ class XmltvParser {
         const val MAX_TEXT = 2_048
         const val MAX_CHANNELS = 20_000
         const val MAX_PROGRAMMES = 80_000
+        const val MAX_DEPTH = 32
         val DATE = Regex("^(\\d{12})(\\d{2})?\\s*([+-]\\d{4})?$")
     }
 }
+
+class XmltvConfigurationFailure : Exception()
 
 private class BoundedXmlInputStream(private val source: InputStream) : InputStream() {
     private var count = 0L
@@ -133,5 +148,28 @@ private class BoundedXmlInputStream(private val source: InputStream) : InputStre
     private fun checkLimit(read: Int) {
         count += read
         require(count <= 60L * 1024 * 1024) { "Guía XMLTV demasiado grande" }
+    }
+}
+
+/** Some Android SAX providers reject security feature flags; blocking DTD input works on each provider. */
+private class RejectingDtdReader(source: Reader) : FilterReader(source) {
+    private var carry = ""
+
+    override fun read(): Int = super.read().also { value ->
+        if (value >= 0) scan(value.toChar().toString())
+    }
+
+    override fun read(buffer: CharArray, offset: Int, length: Int): Int =
+        super.read(buffer, offset, length).also { count ->
+            if (count > 0) scan(String(buffer, offset, count))
+        }
+
+    private fun scan(chunk: String) {
+        val sample = carry + chunk
+        if (sample.contains("<!DOCTYPE", ignoreCase = true) ||
+            sample.contains("<!ENTITY", ignoreCase = true)) {
+            throw java.io.IOException("DTD is not allowed")
+        }
+        carry = sample.takeLast(8)
     }
 }

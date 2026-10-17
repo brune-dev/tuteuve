@@ -22,8 +22,9 @@ class RemoteXmltvImporter {
                         stream.reset()
                         XmltvParser().parse(if (gzip) GZIPInputStream(stream) else stream)
                     }
-                } catch (_: Exception) {
-                    throw ImportFailure(ImportFailureReason.CONTENT)
+                } catch (error: Exception) {
+                    throw ImportFailure(if (error is XmltvConfigurationFailure) ImportFailureReason.XML_CONFIG
+                    else ImportFailureReason.CONTENT)
                 }
             }
         } catch (error: ImportFailure) {

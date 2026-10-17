@@ -20,7 +20,7 @@
 
 - Revisar manifest y permisos: no pedir acceso global al almacenamiento, accesibilidad, superposición, micrófono, cámara ni permisos innecesarios. Actividades, servicios, receivers y proveedores internos con `exported=false`; la entrada de lanzamiento requerida por Android no recibe datos sensibles y valida todo dato externo.
 - Mantener datos en almacenamiento privado de la app. Desactivar la copia automática de fuentes, credenciales, favoritos e historial; no crear proveedores o permisos de lectura amplios.
-- Evitar URLs, cabeceras, tokens, contraseñas y nombres de listas en logs, excepciones, notificaciones y pantallas de error. No registrar historial de reproducción. Las pruebas usan datos sintéticos.
+- Evitar URLs, cabeceras, tokens, contraseñas y nombres de listas en logs, excepciones, notificaciones y pantallas de error. Los recientes elegidos por el usuario se guardan solo como identificadores de canal en el dispositivo; no se envían ni aparecen en logs. Las pruebas usan datos sintéticos.
 - Exigir TLS válido para credenciales. Una fuente que requiera usuario y contraseña por HTTP se rechaza en la alpha. Revisar y limitar redirecciones y peticiones derivadas de listas/guías; documentar cualquier excepción de transporte necesaria para contenidos sin credenciales.
 - Validar tamaños, formatos y campos de M3U/XMLTV; procesar sin ejecutar código o comandos; limitar memoria, tiempo, profundidad y número de entradas; tolerar errores sin bloquear la interfaz.
 - Inventariar dependencias, fijar versiones, revisar licencias y vulnerabilidades, y generar una compilación reproducible. No integrar analítica ni crash reporting automático.

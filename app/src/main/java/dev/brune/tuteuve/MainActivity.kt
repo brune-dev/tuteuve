@@ -57,6 +57,7 @@ import dev.brune.tuteuve.data.RemoteM3uImporter
 import dev.brune.tuteuve.data.UserLibrary
 import dev.brune.tuteuve.data.UserLibraryRepository
 import dev.brune.tuteuve.data.EpgGuide
+import dev.brune.tuteuve.data.EpgIndex
 import dev.brune.tuteuve.data.EpgRepository
 import dev.brune.tuteuve.data.RemoteXmltvImporter
 import java.util.concurrent.Executors
@@ -92,6 +93,7 @@ class MainActivity : ComponentActivity() {
             var catalogUi by remember { mutableStateOf(CatalogUiState()) }
             var guideUi by remember { mutableStateOf(GuideUiState()) }
             var guide by remember { mutableStateOf<EpgGuide?>(null) }
+            var guideIndex by remember { mutableStateOf<EpgIndex?>(null) }
             var epgUrl by remember { mutableStateOf("") }
             var importingGuide by remember { mutableStateOf(false) }
             var removingGuide by remember { mutableStateOf(false) }
@@ -126,7 +128,7 @@ class MainActivity : ComponentActivity() {
                         loaded to CatalogIndex(loaded)
                     }
                     val storedLibrary = runCatching { libraryRepository.load() }
-                    val storedGuide = runCatching { epgRepository.load() }
+                    val storedGuide = runCatching { epgRepository.load()?.let { it to EpgIndex(it) } }
                     runOnUiThread {
                         if (isDestroyed) return@runOnUiThread
                         stored.onSuccess { (loaded, built) ->
@@ -138,7 +140,10 @@ class MainActivity : ComponentActivity() {
                         storedLibrary.onSuccess { library = it }.onFailure {
                             notice = "No se pudo leer la biblioteca guardada. No se ha modificado."
                         }
-                        storedGuide.onSuccess { guide = it }.onFailure {
+                        storedGuide.onSuccess { stored ->
+                            guide = stored?.first
+                            guideIndex = stored?.second
+                        }.onFailure {
                             notice = "No se pudo leer la guía guardada. No se ha modificado."
                         }
                     }
@@ -212,7 +217,7 @@ class MainActivity : ComponentActivity() {
                                 lifecycle = lifecycle,
                             )
                             Screen.Guide -> GuideScreen(
-                                channels = channels, catalog = catalog, guide = guide,
+                                channels = channels, catalog = catalog, guide = guide, index = guideIndex,
                                 uiState = guideUi, onUiStateChange = { guideUi = it },
                                 onPlay = { playing = it; updateLibrary(library.recordPlayed(it.id)) },
                                 onOpenDrawer = { drawerVisible = true },
@@ -285,7 +290,7 @@ class MainActivity : ComponentActivity() {
                                             runOnUiThread {
                                                 if (isDestroyed) return@runOnUiThread
                                                 removingGuide = false
-                                                result.onSuccess { guide = null; notice = "Guía retirada del dispositivo." }
+                                                result.onSuccess { guide = null; guideIndex = null; notice = "Guía retirada del dispositivo." }
                                                     .onFailure { notice = "No se pudo retirar la guía." }
                                             }
                                         }
@@ -335,6 +340,7 @@ class MainActivity : ComponentActivity() {
                                                             ImportFailureReason.NAME -> "Introduce un nombre de fuente válido."
                                                             ImportFailureReason.RESPONSE -> "El servidor no entregó la lista solicitada."
                                                             ImportFailureReason.CONTENT -> "La respuesta no tiene un formato M3U compatible."
+                                                            ImportFailureReason.XML_CONFIG -> "El lector XMLTV no está disponible en este dispositivo."
                                                             ImportFailureReason.DNS -> "No se pudo resolver el servidor o el destino está bloqueado."
                                                             ImportFailureReason.TLS -> "No se pudo verificar la conexión segura del servidor."
                                                             ImportFailureReason.NETWORK -> "No se pudo completar la conexión con el servidor."
@@ -360,16 +366,17 @@ class MainActivity : ComponentActivity() {
                                         val url = epgUrl.trim()
                                         io.execute {
                                             val result = runCatching {
-                                                epgImporter.import(url).also(epgRepository::save)
+                                                epgImporter.import(url).also(epgRepository::save).let { it to EpgIndex(it) }
                                             }
                                             runOnUiThread {
                                                 if (isDestroyed) return@runOnUiThread
                                                 importingGuide = false
                                                 result.onSuccess {
-                                                    guide = it
+                                                    guide = it.first
+                                                    guideIndex = it.second
                                                     epgUrl = ""
                                                     screen = Screen.Guide
-                                                    notice = "Guía importada: ${it.programmes.size} programas."
+                                                    notice = "Guía importada: ${it.first.programmes.size} programas."
                                                 }.onFailure { error ->
                                                     // Never display exception text: it may include a private address.
                                                     notice = when (error) {
@@ -377,6 +384,7 @@ class MainActivity : ComponentActivity() {
                                                             ImportFailureReason.ADDRESS -> "La dirección XMLTV debe ser HTTPS y pública."
                                                             ImportFailureReason.RESPONSE -> "El servidor no entregó la guía solicitada."
                                                             ImportFailureReason.CONTENT -> "La guía XMLTV no es compatible o supera los límites."
+                                                            ImportFailureReason.XML_CONFIG -> "El lector XMLTV no está disponible en este dispositivo."
                                                             ImportFailureReason.DNS -> "No se pudo resolver el servidor o el destino está bloqueado."
                                                             ImportFailureReason.TLS -> "No se pudo verificar la conexión segura del servidor."
                                                             ImportFailureReason.NETWORK -> "No se pudo completar la conexión con el servidor."

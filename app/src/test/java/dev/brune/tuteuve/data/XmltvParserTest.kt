@@ -50,6 +50,11 @@ class XmltvParserTest {
         assertTrue(result.isFailure)
     }
 
+    @Test fun rejectsExcessiveNesting() {
+        val nested = "<tv>" + "<x>".repeat(40) + "</x>".repeat(40) + "</tv>"
+        assertTrue(runCatching { parse(nested) }.isFailure)
+    }
+
     @Test fun skipsInvalidAndEndedBeforeStarted() {
         val guide = parse("""
             <tv>

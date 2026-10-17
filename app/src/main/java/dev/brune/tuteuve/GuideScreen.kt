@@ -59,13 +59,13 @@ internal fun GuideScreen(
     channels: List<Channel>,
     catalog: CatalogIndex,
     guide: EpgGuide?,
+    index: EpgIndex?,
     uiState: GuideUiState,
     onUiStateChange: (GuideUiState) -> Unit,
     onPlay: (Channel) -> Unit,
     onOpenDrawer: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    val index = remember(guide) { guide?.let(::EpgIndex) }
     val folderChannels = remember(catalog, uiState.folder) { catalog.channels(uiState.folder) }
     val folders = remember(catalog, uiState.folder) { catalog.folders(uiState.folder) }
     val dayStart = remember(uiState.dayOffset) {
