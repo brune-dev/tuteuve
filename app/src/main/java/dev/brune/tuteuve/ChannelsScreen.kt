@@ -5,6 +5,8 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +41,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,6 +60,7 @@ import androidx.tv.material3.Text
 import dev.brune.tuteuve.data.CatalogIndex
 import dev.brune.tuteuve.data.Channel
 import dev.brune.tuteuve.data.secureMediaSources
+import dev.brune.tuteuve.data.UserLibrary
 
 private val panel = Color(0xFF142539)
 private val subtle = Color(0xFFA9BED1)
@@ -66,6 +70,7 @@ internal data class CatalogUiState(
     val folder: List<String> = emptyList(),
     val query: String = "",
     val grid: Boolean = false,
+    val favoritesOnly: Boolean = false,
 )
 
 @Composable
@@ -78,17 +83,29 @@ internal fun ChannelsScreen(
     preview: Channel?,
     onPreview: (Channel) -> Unit,
     onPlay: (Channel) -> Unit,
+    library: UserLibrary,
+    onToggleFavorite: (Channel) -> Unit,
+    onToggleInList: (String, Channel) -> Unit,
     onOpenDrawer: () -> Unit,
     lifecycle: Lifecycle,
 ) {
     val folder = uiState.folder
     val query = uiState.query
     val grid = uiState.grid
-    val visible = remember(index, folder, query) { index.channels(folder, query) }
-    val childFolders = remember(index, folder) { index.folders(folder) }
+    val visible = remember(index, channels, folder, query, uiState.favoritesOnly, library.favorites) {
+        if (uiState.favoritesOnly) channels.filter { it.id in library.favorites && it.name.contains(query.trim(), ignoreCase = true) }
+        else index.channels(folder, query)
+    }
+    val childFolders = remember(index, folder, uiState.favoritesOnly) {
+        if (uiState.favoritesOnly) emptyList() else index.folders(folder)
+    }
     val fullScreenFocus = remember { FocusRequester() }
+    val firstChannelFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
 
-    BackHandler(folder.isNotEmpty()) { onUiStateChange(uiState.copy(folder = folder.dropLast(1))) }
+    BackHandler(folder.isNotEmpty() || uiState.favoritesOnly) {
+        onUiStateChange(if (uiState.favoritesOnly) uiState.copy(favoritesOnly = false) else uiState.copy(folder = folder.dropLast(1)))
+    }
     LaunchedEffect(preview) {
         if (preview != null) fullScreenFocus.requestFocus()
     }
@@ -102,23 +119,30 @@ internal fun ChannelsScreen(
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Text("CARPETAS", color = subtle, fontSize = 13.sp)
-            if (folder.isNotEmpty()) {
-                Button(onClick = { onUiStateChange(uiState.copy(folder = folder.dropLast(1))) }, modifier = Modifier.fillMaxWidth()) {
+            if (folder.isNotEmpty() || uiState.favoritesOnly) {
+                Button(onClick = {
+                    onUiStateChange(if (uiState.favoritesOnly) uiState.copy(favoritesOnly = false)
+                    else uiState.copy(folder = folder.dropLast(1)))
+                }, modifier = Modifier.fillMaxWidth()) {
                     Text("← Volver")
                 }
             }
             Button(
-                onClick = { onUiStateChange(uiState.copy(folder = emptyList())) },
+                onClick = { onUiStateChange(uiState.copy(folder = emptyList(), favoritesOnly = false)) },
                 modifier = Modifier.fillMaxWidth().onPreviewKeyEvent {
                     if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionLeft) {
                         onOpenDrawer(); true
                     } else false
                 },
             ) { FolderLabel("Todos", channels.size) }
+            Button(
+                onClick = { onUiStateChange(uiState.copy(folder = emptyList(), favoritesOnly = true)) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { FolderLabel("Favoritos", library.favorites.size) }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(childFolders, key = { it.path.joinToString("\u0000") }) { item ->
                     Button(
-                        onClick = { onUiStateChange(uiState.copy(folder = item.path)) },
+                        onClick = { onUiStateChange(uiState.copy(folder = item.path, favoritesOnly = false)) },
                         modifier = Modifier.fillMaxWidth().onPreviewKeyEvent {
                             if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionLeft) {
                                 if (folder.isEmpty()) onOpenDrawer()
@@ -133,7 +157,7 @@ internal fun ChannelsScreen(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f)) {
-                    Text(folder.lastOrNull() ?: "Todos", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Text(if (uiState.favoritesOnly) "Favoritos" else folder.lastOrNull() ?: "Todos", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     Text("${visible.size} canales", color = subtle, fontSize = 14.sp)
                 }
                 Button(onClick = { onUiStateChange(uiState.copy(grid = !grid)) }) { Text(if (grid) "☰ Lista" else "▦ Cuadrícula") }
@@ -144,7 +168,13 @@ internal fun ChannelsScreen(
                 onValueChange = { onUiStateChange(uiState.copy(query = it.take(120))) },
                 singleLine = true,
                 textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 17.sp),
-                modifier = Modifier.fillMaxWidth().background(panel, RoundedCornerShape(8.dp)).padding(12.dp),
+                modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown && visible.isNotEmpty()) {
+                        keyboard?.hide()
+                        firstChannelFocus.requestFocus()
+                        true
+                    } else false
+                }.background(panel, RoundedCornerShape(8.dp)).padding(12.dp),
                 decorationBox = { inner ->
                     Box {
                         if (query.isEmpty()) Text("Buscar canal", color = subtle)
@@ -168,17 +198,19 @@ internal fun ChannelsScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(visible.size, key = { "${it}-${visible[it].id}" }) { position ->
-                            ChannelButton(visible[position], preview?.id == visible[position].id, onPreview)
+                            ChannelButton(visible[position], preview?.id == visible[position].id, onPreview,
+                                if (position == 0) Modifier.focusRequester(firstChannelFocus) else Modifier)
                         }
                     }
                 } else {
                     LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(visible.size, key = { "${it}-${visible[it].id}" }) { position ->
-                            ChannelButton(visible[position], preview?.id == visible[position].id, onPreview)
+                            ChannelButton(visible[position], preview?.id == visible[position].id, onPreview,
+                                if (position == 0) Modifier.focusRequester(firstChannelFocus) else Modifier)
                         }
                     }
                 }
-                Column(Modifier.weight(0.8f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(0.8f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (preview == null) {
                         Text("Selecciona un canal para previsualizarlo.", color = subtle)
                     } else {
@@ -187,6 +219,14 @@ internal fun ChannelsScreen(
                         Text(preview.group, color = subtle, fontSize = 14.sp)
                         Button(onClick = { onPlay(preview) }, modifier = Modifier.focusRequester(fullScreenFocus)) {
                             Text("Ver en pantalla completa")
+                        }
+                        Button(onClick = { onToggleFavorite(preview) }) {
+                            Text(if (preview.id in library.favorites) "Quitar favorito" else "Añadir a favoritos")
+                        }
+                        library.lists.keys.sorted().forEach { name ->
+                            Button(onClick = { onToggleInList(name, preview) }) {
+                                Text(if (preview.id in library.lists[name].orEmpty()) "Quitar de $name" else "Añadir a $name")
+                            }
                         }
                     }
                 }
@@ -205,8 +245,8 @@ private fun FolderLabel(name: String, count: Int) {
 }
 
 @Composable
-private fun ChannelButton(channel: Channel, selected: Boolean, onPreview: (Channel) -> Unit) {
-    Button(onClick = { onPreview(channel) }, modifier = Modifier.fillMaxWidth()) {
+private fun ChannelButton(channel: Channel, selected: Boolean, onPreview: (Channel) -> Unit, modifier: Modifier = Modifier) {
+    Button(onClick = { onPreview(channel) }, modifier = modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth()) {
             Text(channel.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(if (selected) "Vista previa activa" else channel.group, color = if (selected) mint else subtle, fontSize = 12.sp)

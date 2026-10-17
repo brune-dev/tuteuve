@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
@@ -53,7 +54,10 @@ import dev.brune.tuteuve.data.NoCompatibleChannels
 import dev.brune.tuteuve.data.ImportFailure
 import dev.brune.tuteuve.data.ImportFailureReason
 import dev.brune.tuteuve.data.RemoteM3uImporter
+import dev.brune.tuteuve.data.UserLibrary
+import dev.brune.tuteuve.data.UserLibraryRepository
 import java.util.concurrent.Executors
+import kotlinx.coroutines.delay
 
 private val Ink = Color(0xFF07111F)
 private val Panel = Color(0xFF142539)
@@ -67,14 +71,17 @@ private enum class Screen(val title: String) {
 @OptIn(ExperimentalLayoutApi::class)
 class MainActivity : ComponentActivity() {
     private lateinit var repository: ChannelRepository
+    private lateinit var libraryRepository: UserLibraryRepository
     private val importer = RemoteM3uImporter()
     private val io = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repository = ChannelRepository(applicationContext)
+        libraryRepository = UserLibraryRepository(applicationContext)
         setContent {
             var channels by remember { mutableStateOf(emptyList<Channel>()) }
+            var library by remember { mutableStateOf(UserLibrary()) }
             var catalog by remember { mutableStateOf(CatalogIndex(emptyList())) }
             var catalogUi by remember { mutableStateOf(CatalogUiState()) }
             var screen by remember { mutableStateOf(Screen.Home) }
@@ -93,12 +100,21 @@ class MainActivity : ComponentActivity() {
             }
             val keyboard = LocalSoftwareKeyboardController.current
             val imeVisible = WindowInsets.isImeVisible
+            val updateLibrary: (UserLibrary) -> Unit = { updated ->
+                library = updated
+                io.execute {
+                    runCatching { libraryRepository.save(updated) }.onFailure {
+                        runOnUiThread { if (!isDestroyed) notice = "No se pudieron guardar los cambios de biblioteca." }
+                    }
+                }
+            }
             LaunchedEffect(Unit) {
                 io.execute {
                     val stored = runCatching {
                         val loaded = repository.load()
                         loaded to CatalogIndex(loaded)
                     }
+                    val storedLibrary = runCatching { libraryRepository.load() }
                     runOnUiThread {
                         if (isDestroyed) return@runOnUiThread
                         stored.onSuccess { (loaded, built) ->
@@ -107,18 +123,20 @@ class MainActivity : ComponentActivity() {
                         }.onFailure {
                             notice = "No se pudieron leer las fuentes guardadas. No se han modificado."
                         }
+                        storedLibrary.onSuccess { library = it }.onFailure {
+                            notice = "No se pudo leer la biblioteca guardada. No se ha modificado."
+                        }
                     }
                 }
             }
             BackHandler(playing != null || drawerVisible || screen != Screen.Home) {
                 when {
+                    imeVisible -> keyboard?.hide()
                     playing != null -> playing = null
                     drawerVisible -> drawerVisible = false
                     screen == Screen.Source -> {
-                        if (imeVisible) keyboard?.hide() else {
-                            sourceUrl = ""
-                            screen = sourceReturn
-                        }
+                        sourceUrl = ""
+                        screen = sourceReturn
                     }
                     screen == Screen.Legal -> screen = legalReturn
                     else -> screen = Screen.Home
@@ -143,8 +161,10 @@ class MainActivity : ComponentActivity() {
                         }
                         when (screen) {
                             Screen.Home -> HomeScreen(
-                                channelCount = channels.size,
+                                channels = channels,
+                                library = library,
                                 onChannels = { screen = Screen.Channels },
+                                onPlay = { playing = it; updateLibrary(library.recordPlayed(it.id)) },
                                 onAddSource = {
                                     sourceName = ""
                                     sourceUrl = ""
@@ -165,12 +185,28 @@ class MainActivity : ComponentActivity() {
                                 },
                                 preview = preview,
                                 onPreview = { preview = it },
-                                onPlay = { playing = it },
+                                onPlay = { playing = it; updateLibrary(library.recordPlayed(it.id)) },
+                                library = library,
+                                onToggleFavorite = { updateLibrary(library.toggleFavorite(it.id)) },
+                                onToggleInList = { name, channel -> updateLibrary(library.toggleInList(name, channel.id)) },
                                 onOpenDrawer = { drawerVisible = true },
                                 lifecycle = lifecycle,
                             )
-                            Screen.Guide -> EmptyScreen("La guía se activará cuando conectemos una fuente EPG real.")
-                            Screen.Library -> EmptyScreen("Aún no hay grabaciones. La grabación real está pendiente de validación.")
+                            Screen.Guide -> EmptyScreen("La guía se activará cuando conectemos una fuente EPG real.", onOpenDrawer = { drawerVisible = true })
+                            Screen.Library -> LibraryScreen(
+                                channels = channels,
+                                library = library,
+                                onPlay = { playing = it; updateLibrary(library.recordPlayed(it.id)) },
+                                onToggleFavorite = { updateLibrary(library.toggleFavorite(it.id)) },
+                                onCreateList = { name ->
+                                    val result = runCatching { library.addList(name) }
+                                    result
+                                        .onSuccess { updateLibrary(it); notice = null }
+                                        .onFailure { notice = "El nombre de la lista está vacío, repetido o supera el límite." }
+                                    result.isSuccess
+                                },
+                                onRemoveList = { updateLibrary(library.removeList(it)) },
+                            )
                             Screen.Settings -> SettingsScreen(
                                 channels,
                                 removingSource = removingSource,
@@ -203,6 +239,7 @@ class MainActivity : ComponentActivity() {
                                                     if (preview?.sourceName == name) preview = null
                                                     if (sourceName == name) sourceName = ""
                                                     catalogUi = catalogUi.copy(folder = emptyList())
+                                                    updateLibrary(library.retainChannels(loaded.mapTo(HashSet()) { it.id }))
                                                     notice = "Fuente retirada del dispositivo."
                                                 }.onFailure {
                                                     notice = "No se pudo retirar la fuente."
@@ -241,6 +278,7 @@ class MainActivity : ComponentActivity() {
                                                 outcome.onSuccess { (report, loaded, built) ->
                                                     channels = loaded
                                                     catalog = built
+                                                    updateLibrary(library.retainChannels(loaded.mapTo(HashSet()) { it.id }))
                                                     sourceUrl = ""
                                                     screen = Screen.Channels
                                                     notice = "${report.channels.size} canales añadidos; ${report.ignoredEntries} entradas omitidas" +
@@ -298,15 +336,56 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun HomeScreen(channelCount: Int, onChannels: () -> Unit, onAddSource: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.padding(top = 38.dp)) {
+private fun HomeScreen(
+    channels: List<Channel>,
+    library: UserLibrary,
+    onChannels: () -> Unit,
+    onPlay: (Channel) -> Unit,
+    onAddSource: () -> Unit,
+) {
+    val channelCount = channels.size
+    val featured = remember(channels, library.favorites) {
+        channels.filter { it.id in library.favorites }.take(10)
+    }
+    var featuredPosition by remember { mutableStateOf(0) }
+    LaunchedEffect(featured.size) {
+        if (featured.isEmpty()) featuredPosition = 0
+        else while (true) {
+            delay(8000)
+            featuredPosition = (featuredPosition + 1) % featured.size
+        }
+    }
+    val addFocus = remember { FocusRequester() }
+    val channelsFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { addFocus.requestFocus() }
+    Column(verticalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.padding(top = 38.dp).verticalScroll(rememberScrollState())) {
         Text("Tu televisión, organizada a tu manera.", color = Color.White, fontSize = 26.sp)
         Text("$channelCount canales disponibles", color = Subtle, fontSize = 18.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Button(onClick = onAddSource) { Text("Añadir URL M3U") }
-            if (channelCount > 0) Button(onClick = onChannels) { Text("Ver canales") }
+            Button(onClick = onAddSource, modifier = Modifier.focusRequester(addFocus).onPreviewKeyEvent {
+                if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionRight && channelCount > 0) {
+                    channelsFocus.requestFocus(); true
+                } else false
+            }) { Text("Añadir URL M3U") }
+            if (channelCount > 0) Button(onClick = onChannels, modifier = Modifier.focusRequester(channelsFocus).onPreviewKeyEvent {
+                if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionLeft) {
+                    addFocus.requestFocus(); true
+                } else false
+            }) { Text("Ver canales") }
         }
         Text("tuteuve no incluye canales ni listas. Utiliza solo fuentes que tengas derecho a usar.", color = Subtle)
+        if (featured.isNotEmpty()) {
+            val selected = featured[featuredPosition.coerceIn(featured.indices)]
+            Text("En tus favoritos", color = Mint, fontSize = 18.sp)
+            Text(selected.name, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+            Text("${selected.group} · ${selected.sourceName}", color = Subtle)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                featured.forEachIndexed { position, _ ->
+                    Text(if (position == featuredPosition) "●" else "○", color = if (position == featuredPosition) Mint else Subtle)
+                }
+            }
+            Button(onClick = { onPlay(selected) }) { Text("Ver canal") }
+        }
     }
 }
 
@@ -362,8 +441,16 @@ private fun LegalScreen(acknowledgement: Boolean, onBack: () -> Unit) {
 }
 
 @Composable
-private fun EmptyScreen(message: String) {
-    Text(message, color = Subtle, fontSize = 20.sp, modifier = Modifier.padding(top = 38.dp))
+private fun EmptyScreen(message: String, onOpenDrawer: () -> Unit) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    Box(Modifier.fillMaxSize().focusRequester(focus).onPreviewKeyEvent {
+        if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionLeft) {
+            onOpenDrawer(); true
+        } else false
+    }.focusable()) {
+        Text(message, color = Subtle, fontSize = 20.sp, modifier = Modifier.padding(top = 38.dp))
+    }
 }
 
 @Composable
