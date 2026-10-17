@@ -1,6 +1,6 @@
 # tuteuve
 
-Reproductor IPTV libre, local y pensado para Google TV. El objetivo es ofrecer navegación con mando, guía diaria, listas, favoritos y reproducción de calidad sin suscripción. **El repositorio está en fase de planificación; todavía no contiene una APK funcional.**
+Reproductor IPTV libre, local y pensado para Google TV. El objetivo es ofrecer navegación con mando, guía diaria, listas, favoritos y reproducción de calidad sin suscripción. **El desarrollo Android ha comenzado; todavía no hay una APK alpha validada.**
 
 ## Visión
 
@@ -20,9 +20,21 @@ El [prototipo visual aprobado](https://iptv-sala-prototipo.xcorreogenerico.chatg
 
 ## Estado del proyecto
 
-1. Abrir los issues de la alpha y los de la fase siguiente.
-2. Crear el proyecto Android con Kotlin, Compose para TV y Media3.
-3. Entregar una APK alpha para instalación manual y publicar resultados de pruebas.
+1. La versión interna incluye navegación con mando, catálogo, búsqueda, vista previa, reproducción Media3 y fuentes M3U HTTPS con alta, actualización manual y retirada confirmada. También permite favoritos, listas propias y recientes persistentes; la portada rota canales favoritos sin mover el foco. La guía admite una URL XMLTV HTTPS o una importación manual desde un servidor Xtream HTTPS, filtra por las mismas carpetas, muestra hoy y mañana, y presenta la duración real de cada programa. La carga de archivos `.m3u` está suspendida. Las direcciones de M3U y XMLTV y las credenciales usadas para importar la guía Xtream no se conservan; para actualizar hay que introducirlas de nuevo. Los canales y la guía quedan en almacenamiento privado excluido de copias de seguridad. La biblioteca guarda solo identificadores de canal. Las solicitudes de lista, guía, vista previa y vídeo comparten el bloqueo de destinos locales y redirecciones.
+2. La rama de desarrollo se comprueba con compilación, pruebas unitarias y Android Lint en el PR. En el emulador TV se importaron una lista y una guía sintéticas por URL pública; se comprobó el cambio de día, la ficha de programa y la persistencia de la guía sin guardar su URL. La vía Xtream XMLTV requiere validación con una fuente autorizada introducida directamente en el dispositivo. Pendiente: validar guía y reproducción con fuentes autorizadas, completar la importación de canales Xtream y su protección de credenciales con Keystore, probar listas grandes y ejecutar la [auditoría de seguridad](SECURITY.md).
+3. Entregar una APK alpha para instalación manual solo tras superar las pruebas de calidad y seguridad.
+
+### Compilar la rama de desarrollo
+
+Se necesitan JDK 17 y Android SDK 36. El proyecto incluye `gradlew` y `gradlew.bat`, que descargan Gradle 8.13 con verificación SHA-256; no hay que instalar Gradle manualmente. En Android Studio, selecciona JDK 17 como **Gradle JDK**. En PowerShell, si `java -version` aún muestra Java 8, establece JDK 17 para esa sesión:
+
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Java\jdk-17'
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+.\gradlew.bat :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+```
+
+La APK local queda en `app/build/outputs/apk/debug/app-debug.apk`. La compilación automática de GitHub ejecuta esas mismas comprobaciones en cada pull request. `minSdk` es 23 (Android TV 6); la compatibilidad efectiva se verificará en un dispositivo Android TV 14 y en emuladores de versiones anteriores.
 
 ## Comunidad
 

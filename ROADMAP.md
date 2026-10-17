@@ -2,6 +2,8 @@
 
 ## Alcance y fecha objetivo
 
+**Decisión vigente:** se suspende la carga de archivos `.m3u`. Se desarrolla el alta por URL M3U HTTPS y después Xtream, con protección específica de credenciales. El parser M3U procesa la respuesta de una URL autorizada. La conexión real y la reproducción se validarán con una fuente privada facilitada fuera del repositorio cuando sea necesario.
+
 La primera meta es una **alpha Android TV / Google TV instalable en 1–2 días de trabajo concentrado**, contando desde que empiece el desarrollo. Es una estimación de ejecución, sujeta a disponer de un Google TV o emulador, Android SDK y al menos una fuente de prueba autorizada. Publicar en Google Play y garantizar compatibilidad con todos los proveedores no forma parte de esa meta. Si las pruebas de seguridad o calidad revelan fallos, se amplía el plazo antes de publicar la APK.
 
 La alpha debe cubrir los journeys J1–J4. J5–J7 quedan planificados y se implementarán después de validar el flujo principal. Esta división evita presentar como grabación real o programación automática algo que la app todavía no puede cumplir.

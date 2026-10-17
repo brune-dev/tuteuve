@@ -1,0 +1,4 @@
+#EXTM3U
+# Test-only fixture: no real stream or private source.
+#EXTINF:-1 group-title="Pruebas",Canal sintetico
+https://example.com/nonexistent.m3u8
