@@ -3,9 +3,7 @@ package dev.brune.tuteuve
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,7 +43,6 @@ import androidx.tv.material3.Text
 import dev.brune.tuteuve.data.Channel
 import dev.brune.tuteuve.data.CatalogIndex
 import dev.brune.tuteuve.data.ChannelRepository
-import dev.brune.tuteuve.data.NoCompatibleChannels
 import java.util.concurrent.Executors
 
 private val Ink = Color(0xFF07111F)
@@ -73,10 +70,6 @@ class MainActivity : ComponentActivity() {
             var preview by remember { mutableStateOf<Channel?>(null) }
             var drawerVisible by remember { mutableStateOf(false) }
             var notice by remember { mutableStateOf<String?>(null) }
-            var importing by remember { mutableStateOf(false) }
-            var legalAccepted by remember {
-                mutableStateOf(getPreferences(MODE_PRIVATE).getBoolean("source_notice_seen", false))
-            }
             LaunchedEffect(Unit) {
                 io.execute {
                     val stored = runCatching {
@@ -94,41 +87,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-                if (uri != null) {
-                    importing = true
-                    // A local document is opened only for this import; no URI grant is retained.
-                    io.execute {
-                        val result = runCatching {
-                            val report = repository.import(uri)
-                            val loaded = repository.load()
-                            Triple(report, loaded, CatalogIndex(loaded))
-                        }
-                        runOnUiThread {
-                            if (isDestroyed) return@runOnUiThread
-                            importing = false
-                            result.onSuccess { (report, loaded, built) ->
-                                channels = loaded
-                                catalog = built
-                                screen = Screen.Channels
-                                notice = "${report.channels.size} canales importados; ${report.ignoredEntries} entradas omitidas" +
-                                    (if (report.httpEntries > 0) " (${report.httpEntries} usan HTTP y requieren revisión)" else "")
-                            }.onFailure { error ->
-                                // Never display arbitrary exception text: provider errors can contain private URLs.
-                                notice = if (error is NoCompatibleChannels && error.httpEntries > 0) {
-                                    "No hay emisiones HTTPS. ${error.httpEntries} usan HTTP y requieren revisión de privacidad."
-                                } else {
-                                    "No se pudo importar la lista. Comprueba el archivo y usa emisiones HTTPS."
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            val importAction = {
-                if (legalAccepted) picker.launch(arrayOf("*/*")) else screen = Screen.Legal
-            }
-
             BackHandler(playing != null || drawerVisible || screen != Screen.Home) {
                 when {
                     playing != null -> playing = null
@@ -155,7 +113,7 @@ class MainActivity : ComponentActivity() {
                             Spacer(Modifier.height(12.dp))
                         }
                         when (screen) {
-                            Screen.Home -> HomeScreen(channels.size, importing, importAction) {
+                            Screen.Home -> HomeScreen(channels.size) {
                                 screen = Screen.Channels
                             }
                             Screen.Channels -> ChannelsScreen(
@@ -163,8 +121,6 @@ class MainActivity : ComponentActivity() {
                                 index = catalog,
                                 uiState = catalogUi,
                                 onUiStateChange = { catalogUi = it },
-                                importing = importing,
-                                onImport = importAction,
                                 preview = preview,
                                 onPreview = { preview = it },
                                 onPlay = { playing = it },
@@ -173,13 +129,8 @@ class MainActivity : ComponentActivity() {
                             )
                             Screen.Guide -> EmptyScreen("La guía se activará cuando conectemos una fuente EPG real.")
                             Screen.Library -> EmptyScreen("Aún no hay grabaciones. La grabación real está pendiente de validación.")
-                            Screen.Settings -> SettingsScreen(channels, importing, importAction, onLegal = { screen = Screen.Legal })
-                            Screen.Legal -> LegalScreen(onContinue = {
-                                legalAccepted = true
-                                getPreferences(MODE_PRIVATE).edit().putBoolean("source_notice_seen", true).apply()
-                                screen = Screen.Settings
-                                picker.launch(arrayOf("*/*"))
-                            })
+                            Screen.Settings -> SettingsScreen(channels, onLegal = { screen = Screen.Legal })
+                            Screen.Legal -> LegalScreen(onBack = { screen = Screen.Settings })
                         }
                     }
                     if (drawerVisible) {
@@ -201,41 +152,37 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun HomeScreen(channelCount: Int, importing: Boolean, onImport: () -> Unit, onChannels: () -> Unit) {
+private fun HomeScreen(channelCount: Int, onChannels: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.padding(top = 38.dp)) {
         Text("Tu televisión, organizada a tu manera.", color = Color.White, fontSize = 26.sp)
         Text("$channelCount canales disponibles", color = Subtle, fontSize = 18.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Button(onClick = onImport, enabled = !importing) { Text(if (importing) "Importando…" else "Añadir lista M3U") }
-            if (channelCount > 0) Button(onClick = onChannels) { Text("Ver canales") }
-        }
+        if (channelCount > 0) Button(onClick = onChannels) { Text("Ver canales") }
+        else Text("Alta de fuentes en preparación: URL M3U y Xtream.", color = Subtle)
         Text("tuteuve no incluye canales ni listas. Utiliza solo fuentes que tengas derecho a usar.", color = Subtle)
     }
 }
 
 @Composable
-private fun SettingsScreen(channels: List<Channel>, importing: Boolean, onImport: () -> Unit, onLegal: () -> Unit) {
+private fun SettingsScreen(channels: List<Channel>, onLegal: () -> Unit) {
     val sources = remember(channels) { channels.groupingBy { it.sourceName }.eachCount() }
     Column(Modifier.padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text("Fuentes locales", color = Color.White, fontSize = 24.sp)
         if (sources.isEmpty()) Text("No hay fuentes importadas.", color = Subtle)
         sources.forEach { (name, count) -> Text("$name · $count canales", color = Subtle) }
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Button(onClick = onImport, enabled = !importing) { Text("Añadir lista M3U") }
-            Button(onClick = onLegal) { Text("Aviso de uso") }
-        }
+        Text("Alta de fuentes en preparación: URL M3U y Xtream.", color = Subtle)
+        Button(onClick = onLegal) { Text("Aviso de uso") }
         Text("No hay cuenta, analítica, telemetría ni servidor de tuteuve.", color = Subtle)
     }
 }
 
 @Composable
-private fun LegalScreen(onContinue: () -> Unit) {
+private fun LegalScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val fullNotice = remember { context.assets.open("DISCLAIMER.txt").bufferedReader().use { it.readText() } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 22.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
         Text("Antes de añadir una fuente", color = Mint, fontSize = 24.sp)
         Text(fullNotice, color = Color.White, fontSize = 17.sp)
-        Button(onClick = onContinue) { Text("Entendido · Elegir mi archivo") }
+        Button(onClick = onBack) { Text("Volver a ajustes") }
     }
 }
 

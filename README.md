@@ -20,8 +20,8 @@ El [prototipo visual aprobado](https://iptv-sala-prototipo.xcorreogenerico.chatg
 
 ## Estado del proyecto
 
-1. Base Android TV en desarrollo: navegación, importación local M3U y reproducción Media3 inicial. La importación acepta por ahora emisiones HTTPS; las entradas no compatibles se omiten y se cuentan.
-2. La rama de desarrollo ya supera compilación, pruebas unitarias y Android Lint. Pendiente: completar catálogo, vista previa, EPG y fuentes Xtream, probar en televisores y ejecutar la [auditoría de seguridad](SECURITY.md).
+1. Base Android TV en desarrollo: navegación, catálogo y reproducción Media3 inicial. Por decisión del proyecto, la carga de archivos `.m3u` está suspendida. El próximo alta de fuentes contemplará URL M3U y Xtream; no está disponible todavía. Los canales importados en versiones de desarrollo anteriores permanecen en el almacenamiento privado del dispositivo.
+2. La rama de desarrollo pasa compilación, pruebas unitarias y Android Lint en el PR. Pendiente: completar el reproductor, EPG, URL M3U y Xtream, probar en televisores y ejecutar la [auditoría de seguridad](SECURITY.md).
 3. Entregar una APK alpha para instalación manual solo tras superar las pruebas de calidad y seguridad.
 
 ### Compilar la rama de desarrollo

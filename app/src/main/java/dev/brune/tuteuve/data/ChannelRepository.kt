@@ -1,11 +1,8 @@
 package dev.brune.tuteuve.data
 
 import android.content.Context
-import android.net.Uri
-import android.provider.OpenableColumns
 import android.util.AtomicFile
 import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.io.FileNotFoundException
 
@@ -13,7 +10,6 @@ import java.io.FileNotFoundException
 class ChannelRepository(private val context: Context) {
     // Android excludes noBackupFilesDir even on devices that still allow device-to-device transfer.
     private val store = AtomicFile(File(context.noBackupFilesDir, "channels.json"))
-    private val parser = M3uParser()
 
     fun load(): List<Channel> {
         val data = try {
@@ -35,47 +31,4 @@ class ChannelRepository(private val context: Context) {
             }
         }
     }
-
-    fun import(uri: Uri): ImportResult {
-        val sourceName = displayName(uri)
-        val parsed = context.contentResolver.openInputStream(uri)?.use { parser.parse(it, sourceName) }
-            ?: error("No se pudo abrir el archivo")
-        if (parsed.channels.isEmpty()) throw NoCompatibleChannels(parsed.httpEntries)
-        val existing = load().filterNot { it.sourceName == sourceName }
-        val merged = (existing + parsed.channels).distinctBy { it.id }
-        save(merged)
-        return parsed
-    }
-
-    fun removeSource(name: String) = save(load().filterNot { it.sourceName == name })
-
-    private fun displayName(uri: Uri): String {
-        val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-            ?.trim()?.take(80)
-        return name?.ifBlank { null } ?: "Fuente importada"
-    }
-
-    private fun save(channels: List<Channel>) {
-        val array = JSONArray()
-        channels.forEach { channel ->
-            array.put(JSONObject().apply {
-                put("id", channel.id)
-                put("name", channel.name)
-                put("group", channel.group)
-                put("url", channel.streamUrl)
-                put("source", channel.sourceName)
-            })
-        }
-        val stream = store.startWrite()
-        try {
-            stream.write(array.toString().toByteArray(Charsets.UTF_8))
-            store.finishWrite(stream)
-        } catch (error: Exception) {
-            store.failWrite(stream)
-            throw error
-        }
-    }
 }
-
-class NoCompatibleChannels(val httpEntries: Int) : Exception()
