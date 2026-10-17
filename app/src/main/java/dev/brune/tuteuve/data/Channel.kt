@@ -6,6 +6,7 @@ data class Channel(
     val group: String,
     val streamUrl: String,
     val sourceName: String,
+    val epgId: String = "",
 )
 
 data class ImportResult(

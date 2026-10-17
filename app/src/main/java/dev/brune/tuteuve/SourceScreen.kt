@@ -82,7 +82,7 @@ internal fun SourceScreen(
 }
 
 @Composable
-private fun SourceField(
+internal fun SourceField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,

@@ -11,12 +11,13 @@ class M3uParserTest {
     @Test fun importsHttpsAndGroupsWithoutOpeningStreams() {
         val result = parse("""
             #EXTM3U
-            #EXTINF:-1 group-title="Documentales",Canal de prueba
+            #EXTINF:-1 tvg-id="canal.prueba" group-title="Documentales",Canal de prueba
             https://example.org/live/test.m3u8
         """.trimIndent())
         assertEquals(1, result.channels.size)
         assertEquals("Documentales", result.channels.single().group)
         assertEquals("Canal de prueba", result.channels.single().name)
+        assertEquals("canal.prueba", result.channels.single().epgId)
         assertEquals(0, result.ignoredEntries)
     }
 

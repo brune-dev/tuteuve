@@ -28,6 +28,7 @@ class ChannelRepository(private val context: Context) {
                     group = item.getString("group"),
                     streamUrl = item.getString("url"),
                     sourceName = item.getString("source"),
+                    epgId = item.optString("epgId"),
                 ))
             }
         }
@@ -58,6 +59,7 @@ class ChannelRepository(private val context: Context) {
                 put("group", channel.group)
                 put("url", channel.streamUrl)
                 put("source", channel.sourceName)
+                put("epgId", channel.epgId)
             })
         }
         val stream = store.startWrite()

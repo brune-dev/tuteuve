@@ -56,6 +56,9 @@ import dev.brune.tuteuve.data.ImportFailureReason
 import dev.brune.tuteuve.data.RemoteM3uImporter
 import dev.brune.tuteuve.data.UserLibrary
 import dev.brune.tuteuve.data.UserLibraryRepository
+import dev.brune.tuteuve.data.EpgGuide
+import dev.brune.tuteuve.data.EpgRepository
+import dev.brune.tuteuve.data.RemoteXmltvImporter
 import java.util.concurrent.Executors
 import kotlinx.coroutines.delay
 
@@ -65,25 +68,33 @@ private val Mint = Color(0xFF8DF0CD)
 private val Subtle = Color(0xFFA9BED1)
 
 private enum class Screen(val title: String) {
-    Home("Inicio"), Channels("Canales"), Guide("Guía TV"), Library("Mi biblioteca"), Settings("Ajustes"), Source("Añadir fuente"), Legal("Aviso de uso")
+    Home("Inicio"), Channels("Canales"), Guide("Guía TV"), Library("Mi biblioteca"), Settings("Ajustes"), Source("Añadir fuente"), EpgSource("Añadir guía"), Legal("Aviso de uso")
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 class MainActivity : ComponentActivity() {
     private lateinit var repository: ChannelRepository
     private lateinit var libraryRepository: UserLibraryRepository
+    private lateinit var epgRepository: EpgRepository
     private val importer = RemoteM3uImporter()
+    private val epgImporter = RemoteXmltvImporter()
     private val io = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repository = ChannelRepository(applicationContext)
         libraryRepository = UserLibraryRepository(applicationContext)
+        epgRepository = EpgRepository(applicationContext)
         setContent {
             var channels by remember { mutableStateOf(emptyList<Channel>()) }
             var library by remember { mutableStateOf(UserLibrary()) }
             var catalog by remember { mutableStateOf(CatalogIndex(emptyList())) }
             var catalogUi by remember { mutableStateOf(CatalogUiState()) }
+            var guideUi by remember { mutableStateOf(GuideUiState()) }
+            var guide by remember { mutableStateOf<EpgGuide?>(null) }
+            var epgUrl by remember { mutableStateOf("") }
+            var importingGuide by remember { mutableStateOf(false) }
+            var removingGuide by remember { mutableStateOf(false) }
             var screen by remember { mutableStateOf(Screen.Home) }
             var playing by remember { mutableStateOf<Channel?>(null) }
             var preview by remember { mutableStateOf<Channel?>(null) }
@@ -115,6 +126,7 @@ class MainActivity : ComponentActivity() {
                         loaded to CatalogIndex(loaded)
                     }
                     val storedLibrary = runCatching { libraryRepository.load() }
+                    val storedGuide = runCatching { epgRepository.load() }
                     runOnUiThread {
                         if (isDestroyed) return@runOnUiThread
                         stored.onSuccess { (loaded, built) ->
@@ -125,6 +137,9 @@ class MainActivity : ComponentActivity() {
                         }
                         storedLibrary.onSuccess { library = it }.onFailure {
                             notice = "No se pudo leer la biblioteca guardada. No se ha modificado."
+                        }
+                        storedGuide.onSuccess { guide = it }.onFailure {
+                            notice = "No se pudo leer la guía guardada. No se ha modificado."
                         }
                     }
                 }
@@ -137,6 +152,10 @@ class MainActivity : ComponentActivity() {
                     screen == Screen.Source -> {
                         sourceUrl = ""
                         screen = sourceReturn
+                    }
+                    screen == Screen.EpgSource -> {
+                        epgUrl = ""
+                        screen = Screen.Settings
                     }
                     screen == Screen.Legal -> screen = legalReturn
                     else -> screen = Screen.Home
@@ -192,7 +211,13 @@ class MainActivity : ComponentActivity() {
                                 onOpenDrawer = { drawerVisible = true },
                                 lifecycle = lifecycle,
                             )
-                            Screen.Guide -> EmptyScreen("La guía se activará cuando conectemos una fuente EPG real.", onOpenDrawer = { drawerVisible = true })
+                            Screen.Guide -> GuideScreen(
+                                channels = channels, catalog = catalog, guide = guide,
+                                uiState = guideUi, onUiStateChange = { guideUi = it },
+                                onPlay = { playing = it; updateLibrary(library.recordPlayed(it.id)) },
+                                onOpenDrawer = { drawerVisible = true },
+                                onOpenSettings = { screen = Screen.Settings },
+                            )
                             Screen.Library -> LibraryScreen(
                                 channels = channels,
                                 library = library,
@@ -209,7 +234,9 @@ class MainActivity : ComponentActivity() {
                             )
                             Screen.Settings -> SettingsScreen(
                                 channels,
+                                guide = guide,
                                 removingSource = removingSource,
+                                removingGuide = removingGuide,
                                 onAddSource = {
                                     sourceName = ""
                                     sourceUrl = ""
@@ -249,6 +276,21 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onLegal = { legalReturn = Screen.Settings; screen = Screen.Legal },
+                                onAddGuide = { epgUrl = ""; screen = Screen.EpgSource },
+                                onRemoveGuide = {
+                                    if (!removingGuide) {
+                                        removingGuide = true
+                                        io.execute {
+                                            val result = runCatching { epgRepository.clear() }
+                                            runOnUiThread {
+                                                if (isDestroyed) return@runOnUiThread
+                                                removingGuide = false
+                                                result.onSuccess { guide = null; notice = "Guía retirada del dispositivo." }
+                                                    .onFailure { notice = "No se pudo retirar la guía." }
+                                            }
+                                        }
+                                    }
+                                },
                             )
                             Screen.Source -> SourceScreen(
                                 name = sourceName,
@@ -305,10 +347,53 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                             )
+                            Screen.EpgSource -> EpgSourceScreen(
+                                url = epgUrl, loading = importingGuide,
+                                onUrlChange = { epgUrl = it },
+                                onSubmit = {
+                                    if (!legalAccepted) {
+                                        legalReturn = Screen.EpgSource
+                                        screen = Screen.Legal
+                                    } else if (!importingGuide) {
+                                        importingGuide = true
+                                        notice = null
+                                        val url = epgUrl.trim()
+                                        io.execute {
+                                            val result = runCatching {
+                                                epgImporter.import(url).also(epgRepository::save)
+                                            }
+                                            runOnUiThread {
+                                                if (isDestroyed) return@runOnUiThread
+                                                importingGuide = false
+                                                result.onSuccess {
+                                                    guide = it
+                                                    epgUrl = ""
+                                                    screen = Screen.Guide
+                                                    notice = "Guía importada: ${it.programmes.size} programas."
+                                                }.onFailure { error ->
+                                                    // Never display exception text: it may include a private address.
+                                                    notice = when (error) {
+                                                        is ImportFailure -> when (error.reason) {
+                                                            ImportFailureReason.ADDRESS -> "La dirección XMLTV debe ser HTTPS y pública."
+                                                            ImportFailureReason.RESPONSE -> "El servidor no entregó la guía solicitada."
+                                                            ImportFailureReason.CONTENT -> "La guía XMLTV no es compatible o supera los límites."
+                                                            ImportFailureReason.DNS -> "No se pudo resolver el servidor o el destino está bloqueado."
+                                                            ImportFailureReason.TLS -> "No se pudo verificar la conexión segura del servidor."
+                                                            ImportFailureReason.NETWORK -> "No se pudo completar la conexión con el servidor."
+                                                            ImportFailureReason.NAME -> "La guía no es válida."
+                                                        }
+                                                        else -> "No se pudo guardar la guía en el dispositivo."
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                            )
                             Screen.Legal -> LegalScreen(
-                                acknowledgement = legalReturn == Screen.Source,
+                                acknowledgement = legalReturn == Screen.Source || legalReturn == Screen.EpgSource,
                                 onBack = {
-                                    if (legalReturn == Screen.Source) {
+                                    if (legalReturn == Screen.Source || legalReturn == Screen.EpgSource) {
                                         legalAccepted = true
                                         getPreferences(MODE_PRIVATE).edit().putBoolean("source_notice_seen", true).apply()
                                     }
@@ -392,16 +477,21 @@ private fun HomeScreen(
 @Composable
 private fun SettingsScreen(
     channels: List<Channel>,
+    guide: EpgGuide?,
     removingSource: String?,
+    removingGuide: Boolean,
     onAddSource: () -> Unit,
     onUpdateSource: (String) -> Unit,
     onRemoveSource: (String) -> Unit,
     onLegal: () -> Unit,
+    onAddGuide: () -> Unit,
+    onRemoveGuide: () -> Unit,
 ) {
     val sources = remember(channels) {
         channels.groupingBy { it.sourceName }.eachCount().toList().sortedBy { it.first.lowercase() }
     }
     var pendingRemoval by remember { mutableStateOf<String?>(null) }
+    var pendingGuideRemoval by remember { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize().padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         item { Text("Fuentes locales", color = Color.White, fontSize = 24.sp) }
         if (sources.isEmpty()) item { Text("No hay fuentes importadas.", color = Subtle) }
@@ -423,6 +513,18 @@ private fun SettingsScreen(
         }
         if (removingSource != null) item { Text("Retirando fuente…", color = Subtle) }
         item { Button(onClick = onAddSource) { Text("Añadir URL M3U") } }
+        item { Text("Guía de programación", color = Color.White, fontSize = 24.sp) }
+        item { Text(if (guide == null) "No hay guía vinculada." else "${guide.programmes.size} programas guardados.", color = Subtle) }
+        item { Button(onClick = onAddGuide, enabled = !removingGuide) { Text(if (guide == null) "Vincular XMLTV" else "Actualizar XMLTV") } }
+        if (guide != null) {
+            item { Button(onClick = { pendingGuideRemoval = true }, enabled = !removingGuide) { Text("Quitar guía") } }
+            if (pendingGuideRemoval) item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = { pendingGuideRemoval = false }) { Text("Cancelar") }
+                    Button(onClick = { pendingGuideRemoval = false; onRemoveGuide() }) { Text("Confirmar retirada de guía") }
+                }
+            }
+        }
         item { Text("Xtream está en preparación; las credenciales aún no se solicitan.", color = Subtle) }
         item { Button(onClick = onLegal) { Text("Aviso de uso") } }
         item { Text("No hay cuenta, analítica, telemetría ni servidor de tuteuve.", color = Subtle) }
@@ -441,26 +543,13 @@ private fun LegalScreen(acknowledgement: Boolean, onBack: () -> Unit) {
 }
 
 @Composable
-private fun EmptyScreen(message: String, onOpenDrawer: () -> Unit) {
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
-    Box(Modifier.fillMaxSize().focusRequester(focus).onPreviewKeyEvent {
-        if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionLeft) {
-            onOpenDrawer(); true
-        } else false
-    }.focusable()) {
-        Text(message, color = Subtle, fontSize = 20.sp, modifier = Modifier.padding(top = 38.dp))
-    }
-}
-
-@Composable
 private fun NavigationDrawer(current: Screen, onSelect: (Screen) -> Unit) {
     val firstItem = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstItem.requestFocus() }
     Column(Modifier.width(290.dp).fillMaxSize().background(Panel).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("tuteuve", fontFamily = FontFamily.Cursive, color = Mint, fontSize = 31.sp)
         Spacer(Modifier.height(16.dp))
-        Screen.entries.filter { it != Screen.Legal && it != Screen.Source }.forEachIndexed { index, screen ->
+        Screen.entries.filter { it != Screen.Legal && it != Screen.Source && it != Screen.EpgSource }.forEachIndexed { index, screen ->
             Button(onClick = { onSelect(screen) }, modifier = Modifier.fillMaxWidth().then(if (index == 0) Modifier.focusRequester(firstItem) else Modifier)) {
                 Text(if (screen == current) "● ${screen.title}" else screen.title)
             }

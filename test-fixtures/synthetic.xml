@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Test-only guide for 17–18 October 2026. No real broadcast or private source. -->
+<tv>
+  <channel id="synthetic.channel"><display-name>Canal sintetico</display-name></channel>
+  <programme channel="synthetic.channel" start="20261017200000 +0200" stop="20261017203500 +0200">
+    <title>Programa de prueba corto</title><desc>Dato sintético para validar duraciones.</desc>
+  </programme>
+  <programme channel="synthetic.channel" start="20261017203500 +0200" stop="20261017220000 +0200">
+    <title>Programa de prueba largo</title>
+  </programme>
+  <programme channel="synthetic.channel" start="20261018180000 +0200" stop="20261018190000 +0200">
+    <title>Programa de mañana</title>
+  </programme>
+</tv>

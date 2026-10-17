@@ -38,6 +38,7 @@ class M3uParser {
                             group = metadata.group,
                             streamUrl = url,
                             sourceName = sourceName,
+                            epgId = metadata.epgId,
                         )
                     }
                 }
@@ -62,7 +63,9 @@ class M3uParser {
         if (name.isBlank()) return null
         val group = GROUP_ATTRIBUTE.find(line)?.groupValues?.get(1)?.trim().orEmpty()
             .take(MAX_NAME_LENGTH).ifBlank { "Sin carpeta" }
-        return Metadata(name, group)
+        val epgId = TVG_ID_ATTRIBUTE.find(line)?.groupValues?.get(1)?.trim().orEmpty()
+            .take(MAX_NAME_LENGTH)
+        return Metadata(name, group, epgId)
     }
 
     private fun safeStreamUrl(value: String): String? {
@@ -98,7 +101,7 @@ class M3uParser {
         return bytes.take(12).joinToString("") { "%02x".format(it) }
     }
 
-    private data class Metadata(val name: String, val group: String)
+    private data class Metadata(val name: String, val group: String, val epgId: String)
 
     private companion object {
         const val MAX_BYTES = 20L * 1024 * 1024
@@ -107,6 +110,7 @@ class M3uParser {
         const val MAX_LINE_LENGTH = 8_192
         const val MAX_NAME_LENGTH = 160
         val GROUP_ATTRIBUTE = Regex("""group-title\s*=\s*"([^"]*)"""", RegexOption.IGNORE_CASE)
+        val TVG_ID_ATTRIBUTE = Regex("""tvg-id\s*=\s*"([^"]*)"""", RegexOption.IGNORE_CASE)
         val NUMERIC_HOST = Regex("[0-9.]+")
     }
 }
