@@ -20,6 +20,7 @@ Cada apartado es un issue independiente. `P0` entra en la alpha de dos días; `P
 - [ ] Importación fuera del hilo de interfaz, con estados de carga, vacío y error.
 - [ ] Se conservan grupos, nombres y metadatos disponibles de cada canal.
 - [ ] Las URLs privadas no aparecen en logs ni informes de error.
+- [ ] Antes de añadir la primera fuente, mostrar el resumen y enlace al [descargo de responsabilidad](DISCLAIMER.md), también accesible después desde Ajustes.
 
 ## P0 · 03 · Catálogo, carpetas y búsqueda
 
@@ -76,6 +77,7 @@ Cada apartado es un issue independiente. `P0` entra en la alpha de dos días; `P
 - [ ] Pruebas funcionales y de regresión, revisión de código y cumplimiento de la revisión de seguridad (#13).
 - [ ] Publicar resultados, fuentes de prueba permitidas y limitaciones conocidas.
 - [ ] Revisar que APK, repositorio, registros y capturas no contengan fuentes privadas, tokens ni credenciales.
+- [ ] Comprobar que el descargo se entiende y puede consultarse desde Ajustes y desde el alta de fuentes.
 
 ## P1 · 09 · Prueba de viabilidad de grabación en primer plano
 
