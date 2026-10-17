@@ -4,9 +4,9 @@ data class CatalogFolder(val path: List<String>, val name: String, val channelCo
 
 /** Immutable lookup built once per import. Only explicit " / " separators create nesting. */
 class CatalogIndex(private val channels: List<Channel>) {
-    private val entries = channels.map { it to folderPath(it.group) }
+    private val channelEntries = channels.map { it to folderPath(it.group) }
     private val counts = buildMap<List<String>, Int> {
-        entries.forEach { (_, path) ->
+        channelEntries.forEach { (_, path) ->
             for (depth in 1..path.size) {
                 val prefix = path.take(depth)
                 put(prefix, getOrDefault(prefix, 0) + 1)
@@ -23,7 +23,7 @@ class CatalogIndex(private val channels: List<Channel>) {
 
     fun channels(parent: List<String>, query: String = ""): List<Channel> {
         val term = query.trim()
-        return entries.filter { (channel, path) ->
+        return channelEntries.filter { (channel, path) ->
             path.take(parent.size) == parent &&
                 (term.isEmpty() || channel.name.contains(term, ignoreCase = true))
         }.map { it.first }
