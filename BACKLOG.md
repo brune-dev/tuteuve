@@ -1,6 +1,6 @@
 # Issues preparados para GitHub
 
-Cada apartado es un issue independiente. `P0` entra en la alpha de dos días; `P1` se inicia después. La entrega de un issue exige cumplir todos sus criterios y documentar los dispositivos y fuentes con que se probó.
+Cada apartado es un issue independiente. `P0` entra en la alpha de dos días; `P1` se inicia después. La entrega de un issue exige cumplir todos sus criterios y documentar los dispositivos y fuentes con que se probó. La alpha requiere además superar [la revisión de seguridad y privacidad](SECURITY.md).
 
 ## P0 · 01 · Base Android TV y navegación con mando
 
@@ -10,6 +10,7 @@ Cada apartado es un issue independiente. `P0` entra en la alpha de dos días; `P
 - [ ] Inicio, canales, guía, biblioteca y ajustes navegables con las cuatro direcciones, seleccionar y volver.
 - [ ] Foco siempre visible; menú lateral accesible desde la izquierda y ocultable.
 - [ ] Marca «tuteuve» solo en el menú lateral, con versión y crédito de desarrollo configurable.
+- [ ] Estructura modular, formato consistente y análisis estático integrados en la compilación; comentarios para decisiones no evidentes.
 
 ## P0 · 02 · Fuentes M3U y varias listas
 
@@ -72,6 +73,7 @@ Cada apartado es un issue independiente. `P0` entra en la alpha de dos días; `P
 
 - [ ] Pruebas en Google TV o emulador con mando, lista grande y conexión lenta.
 - [ ] Compilación de APK instalable e instrucciones de compilación e instalación.
+- [ ] Pruebas funcionales y de regresión, revisión de código y cumplimiento de la revisión de seguridad (#13).
 - [ ] Publicar resultados, fuentes de prueba permitidas y limitaciones conocidas.
 - [ ] Revisar que APK, repositorio, registros y capturas no contengan fuentes privadas, tokens ni credenciales.
 
@@ -108,3 +110,14 @@ Cada apartado es un issue independiente. `P0` entra en la alpha de dos días; `P
 - [ ] Diseñar la ejecución real de grabaciones programadas y su comportamiento fuera de la app.
 - [ ] Informar de fallos de red, permisos o almacenamiento y recuperar archivos parciales cuando sea posible.
 - [ ] No mostrar «Programar grabación» hasta que funcione y se haya probado en TV.
+
+## P0 · 13 · Revisión de seguridad y privacidad
+
+**Journeys:** J1–J4. **Depende de:** 01–07. **Bloquea:** 08 y publicación de la APK.
+
+- [ ] Modelo de amenazas revisado para listas/guías maliciosas, otras apps de la TV, red, almacenamiento y dependencias.
+- [ ] Manifest y APK final auditados: permisos mínimos, componentes internos no exportados y ausencia de SDK de analítica/telemetría.
+- [ ] Pruebas con M3U/XMLTV hostiles, URLs internas/redirecciones, intents externos y acceso a archivos privados; sin lectura de listas ni ejecución de acciones no autorizadas.
+- [ ] Captura de tráfico en arranque, reposo, navegación y reproducción; solo conexiones justificadas por fuentes configuradas y sus contenidos.
+- [ ] Comprobación de logs, backups, archivos temporales y repositorio sin listas, tokens, contraseñas ni historial privado.
+- [ ] Hallazgos corregidos y pruebas repetidas; resultados y límites publicados sin datos sensibles.
