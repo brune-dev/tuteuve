@@ -50,6 +50,16 @@ class XmltvParserTest {
         assertTrue(result.isFailure)
     }
 
+    @Test fun stripsSimpleXtreamDoctypeWithoutResolvingDtd() {
+        val guide = parse("""
+            <?xml version="1.0" encoding="utf-8"?>
+            <!DOCTYPE tv SYSTEM "xmltv.dtd">
+            <tv><programme channel="a" start="202610171000 +0200" stop="202610171100 +0200">
+            <title>Programa seguro</title></programme></tv>
+        """.trimIndent())
+        assertEquals("Programa seguro", guide.programmes.single().title)
+    }
+
     @Test fun rejectsExcessiveNesting() {
         val nested = "<tv>" + "<x>".repeat(40) + "</x>".repeat(40) + "</tv>"
         assertTrue(runCatching { parse(nested) }.isFailure)

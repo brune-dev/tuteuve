@@ -60,6 +60,7 @@ import dev.brune.tuteuve.data.EpgGuide
 import dev.brune.tuteuve.data.EpgIndex
 import dev.brune.tuteuve.data.EpgRepository
 import dev.brune.tuteuve.data.RemoteXmltvImporter
+import dev.brune.tuteuve.data.XtreamEpgAddress
 import java.util.concurrent.Executors
 import kotlinx.coroutines.delay
 
@@ -69,7 +70,7 @@ private val Mint = Color(0xFF8DF0CD)
 private val Subtle = Color(0xFFA9BED1)
 
 private enum class Screen(val title: String) {
-    Home("Inicio"), Channels("Canales"), Guide("Guía TV"), Library("Mi biblioteca"), Settings("Ajustes"), Source("Añadir fuente"), EpgSource("Añadir guía"), Legal("Aviso de uso")
+    Home("Inicio"), Channels("Canales"), Guide("Guía TV"), Library("Mi biblioteca"), Settings("Ajustes"), Source("Añadir fuente"), EpgSource("Añadir guía"), XtreamEpg("Añadir guía"), Legal("Aviso de uso")
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -95,6 +96,9 @@ class MainActivity : ComponentActivity() {
             var guide by remember { mutableStateOf<EpgGuide?>(null) }
             var guideIndex by remember { mutableStateOf<EpgIndex?>(null) }
             var epgUrl by remember { mutableStateOf("") }
+            var xtreamServer by remember { mutableStateOf("") }
+            var xtreamUser by remember { mutableStateOf("") }
+            var xtreamPassword by remember { mutableStateOf("") }
             var importingGuide by remember { mutableStateOf(false) }
             var removingGuide by remember { mutableStateOf(false) }
             var screen by remember { mutableStateOf(Screen.Home) }
@@ -160,6 +164,12 @@ class MainActivity : ComponentActivity() {
                     }
                     screen == Screen.EpgSource -> {
                         epgUrl = ""
+                        screen = Screen.Settings
+                    }
+                    screen == Screen.XtreamEpg -> {
+                        xtreamServer = ""
+                        xtreamUser = ""
+                        xtreamPassword = ""
                         screen = Screen.Settings
                     }
                     screen == Screen.Legal -> screen = legalReturn
@@ -282,6 +292,12 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onLegal = { legalReturn = Screen.Settings; screen = Screen.Legal },
                                 onAddGuide = { epgUrl = ""; screen = Screen.EpgSource },
+                                onAddXtreamGuide = {
+                                    xtreamServer = ""
+                                    xtreamUser = ""
+                                    xtreamPassword = ""
+                                    screen = Screen.XtreamEpg
+                                },
                                 onRemoveGuide = {
                                     if (!removingGuide) {
                                         removingGuide = true
@@ -398,10 +414,64 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                             )
+                            Screen.XtreamEpg -> XtreamEpgSourceScreen(
+                                server = xtreamServer,
+                                username = xtreamUser,
+                                password = xtreamPassword,
+                                loading = importingGuide,
+                                onServerChange = { xtreamServer = it },
+                                onUsernameChange = { xtreamUser = it },
+                                onPasswordChange = { xtreamPassword = it },
+                                onSubmit = {
+                                    if (!legalAccepted) {
+                                        legalReturn = Screen.XtreamEpg
+                                        screen = Screen.Legal
+                                    } else if (!importingGuide) {
+                                        importingGuide = true
+                                        notice = null
+                                        val server = xtreamServer.trim()
+                                        val user = xtreamUser
+                                        val password = xtreamPassword
+                                        io.execute {
+                                            val result = runCatching {
+                                                val url = XtreamEpgAddress.create(server, user, password)
+                                                epgImporter.import(url).also(epgRepository::save).let { it to EpgIndex(it) }
+                                            }
+                                            runOnUiThread {
+                                                if (isDestroyed) return@runOnUiThread
+                                                importingGuide = false
+                                                result.onSuccess {
+                                                    guide = it.first
+                                                    guideIndex = it.second
+                                                    xtreamServer = ""
+                                                    xtreamUser = ""
+                                                    xtreamPassword = ""
+                                                    screen = Screen.Guide
+                                                    notice = "Guía importada: ${it.first.programmes.size} programas."
+                                                }.onFailure { error ->
+                                                    notice = when (error) {
+                                                        is ImportFailure -> when (error.reason) {
+                                                            ImportFailureReason.ADDRESS -> "El servidor debe ser HTTPS y público; comprueba los datos de acceso."
+                                                            ImportFailureReason.RESPONSE -> "El servidor no entregó la guía Xtream solicitada."
+                                                            ImportFailureReason.CONTENT -> "La guía Xtream no es compatible o supera los límites."
+                                                            ImportFailureReason.XML_CONFIG -> "El lector XMLTV no está disponible en este dispositivo."
+                                                            ImportFailureReason.DNS -> "No se pudo resolver el servidor o el destino está bloqueado."
+                                                            ImportFailureReason.TLS -> "No se pudo verificar la conexión segura del servidor."
+                                                            ImportFailureReason.NETWORK -> "No se pudo completar la conexión con el servidor."
+                                                            ImportFailureReason.NAME -> "La guía no es válida."
+                                                        }
+                                                        else -> "No se pudo guardar la guía en el dispositivo."
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                            )
                             Screen.Legal -> LegalScreen(
-                                acknowledgement = legalReturn == Screen.Source || legalReturn == Screen.EpgSource,
+                                acknowledgement = legalReturn == Screen.Source || legalReturn == Screen.EpgSource || legalReturn == Screen.XtreamEpg,
                                 onBack = {
-                                    if (legalReturn == Screen.Source || legalReturn == Screen.EpgSource) {
+                                    if (legalReturn == Screen.Source || legalReturn == Screen.EpgSource || legalReturn == Screen.XtreamEpg) {
                                         legalAccepted = true
                                         getPreferences(MODE_PRIVATE).edit().putBoolean("source_notice_seen", true).apply()
                                     }
@@ -493,6 +563,7 @@ private fun SettingsScreen(
     onRemoveSource: (String) -> Unit,
     onLegal: () -> Unit,
     onAddGuide: () -> Unit,
+    onAddXtreamGuide: () -> Unit,
     onRemoveGuide: () -> Unit,
 ) {
     val sources = remember(channels) {
@@ -524,6 +595,7 @@ private fun SettingsScreen(
         item { Text("Guía de programación", color = Color.White, fontSize = 24.sp) }
         item { Text(if (guide == null) "No hay guía vinculada." else "${guide.programmes.size} programas guardados.", color = Subtle) }
         item { Button(onClick = onAddGuide, enabled = !removingGuide) { Text(if (guide == null) "Vincular XMLTV" else "Actualizar XMLTV") } }
+        item { Button(onClick = onAddXtreamGuide, enabled = !removingGuide) { Text(if (guide == null) "Vincular guía Xtream" else "Actualizar guía Xtream") } }
         if (guide != null) {
             item { Button(onClick = { pendingGuideRemoval = true }, enabled = !removingGuide) { Text("Quitar guía") } }
             if (pendingGuideRemoval) item {
@@ -533,7 +605,7 @@ private fun SettingsScreen(
                 }
             }
         }
-        item { Text("Xtream está en preparación; las credenciales aún no se solicitan.", color = Subtle) }
+        item { Text("La guía Xtream se importa de forma manual. La importación de canales Xtream sigue en preparación.", color = Subtle) }
         item { Button(onClick = onLegal) { Text("Aviso de uso") } }
         item { Text("No hay cuenta, analítica, telemetría ni servidor de tuteuve.", color = Subtle) }
     }
@@ -557,7 +629,7 @@ private fun NavigationDrawer(current: Screen, onSelect: (Screen) -> Unit) {
     Column(Modifier.width(290.dp).fillMaxSize().background(Panel).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("tuteuve", fontFamily = FontFamily.Cursive, color = Mint, fontSize = 31.sp)
         Spacer(Modifier.height(16.dp))
-        Screen.entries.filter { it != Screen.Legal && it != Screen.Source && it != Screen.EpgSource }.forEachIndexed { index, screen ->
+        Screen.entries.filter { it != Screen.Legal && it != Screen.Source && it != Screen.EpgSource && it != Screen.XtreamEpg }.forEachIndexed { index, screen ->
             Button(onClick = { onSelect(screen) }, modifier = Modifier.fillMaxWidth().then(if (index == 0) Modifier.focusRequester(firstItem) else Modifier)) {
                 Text(if (screen == current) "● ${screen.title}" else screen.title)
             }

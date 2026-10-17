@@ -4,6 +4,7 @@ import java.io.InputStream
 import java.io.FilterReader
 import java.io.InputStreamReader
 import java.io.Reader
+import java.io.PushbackReader
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
@@ -31,14 +32,17 @@ class EpgIndex(guide: EpgGuide) {
     private val aliases = guide.channelNames.entries.groupBy { it.value.trim().lowercase(Locale.ROOT) }
 
     fun programmesFor(channel: Channel): List<EpgProgram> {
-        if (channel.epgId.isNotBlank()) return byKey[channel.epgId].orEmpty()
+        if (channel.epgId.isNotBlank()) {
+            byKey[channel.epgId]?.let { return it }
+            byNormalizedKey[channel.epgId.lowercase(Locale.ROOT)]?.singleOrNull()?.let { return byKey[it].orEmpty() }
+        }
         val key = channel.name.trim().lowercase(Locale.ROOT)
         val candidates = (aliases[key]?.map { it.key }.orEmpty() + byNormalizedKey[key].orEmpty()).distinct()
         return if (candidates.size == 1) byKey[candidates.single()].orEmpty() else emptyList()
     }
 }
 
-/** Bounded SAX parsing; the reader rejects DTDs before the platform parser sees them. */
+/** Bounded SAX parsing; a harmless XMLTV doctype is removed before SAX sees it. */
 class XmltvParser {
     fun parse(input: InputStream): EpgGuide {
         val factory = try { SAXParserFactory.newInstance().apply {
@@ -107,7 +111,7 @@ class XmltvParser {
             }
         }
         try {
-            RejectingDtdReader(InputStreamReader(BoundedXmlInputStream(input), Charsets.UTF_8)).use { reader ->
+            SafeXmltvReader(InputStreamReader(BoundedXmlInputStream(input), Charsets.UTF_8)).use { reader ->
                 factory.newSAXParser().parse(InputSource(reader), handler)
             }
         }
@@ -151,25 +155,47 @@ private class BoundedXmlInputStream(private val source: InputStream) : InputStre
     }
 }
 
-/** Some Android SAX providers reject security feature flags; blocking DTD input works on each provider. */
-private class RejectingDtdReader(source: Reader) : FilterReader(source) {
-    private var carry = ""
+/** Xtream XMLTV often declares xmltv.dtd. Strip only a simple declaration, never fetch it. */
+private class SafeXmltvReader(source: Reader) : FilterReader(source) {
+    private val input = PushbackReader(source, 8)
+    private val doctype = Regex("<!DOCTYPE\\s+tv\\s+SYSTEM\\s+([\"'])[^\"'<>\\[\\]]{1,200}\\1\\s*>", RegexOption.IGNORE_CASE)
 
-    override fun read(): Int = super.read().also { value ->
-        if (value >= 0) scan(value.toChar().toString())
+    override fun read(): Int {
+        val next = input.read()
+        if (next != '<'.code) return next
+        val lookahead = CharArray(8)
+        var count = 0
+        while (count < lookahead.size) {
+            val character = input.read()
+            if (character < 0) break
+            lookahead[count++] = character.toChar()
+        }
+        val tag = "<" + if (count > 0) String(lookahead, 0, count) else ""
+        if (tag.startsWith("<!ENTITY", ignoreCase = true)) throw java.io.IOException("Entity declarations are not allowed")
+        if (tag.startsWith("<!DOCTYPE", ignoreCase = true)) {
+            val declaration = StringBuilder(tag)
+            while (declaration.length <= 256 && declaration.last() != '>') {
+                val character = input.read()
+                if (character < 0) break
+                declaration.append(character.toChar())
+            }
+            if (!doctype.matches(declaration.toString())) throw java.io.IOException("Unsupported DTD")
+            return ' '.code
+        }
+        if (count > 0) input.unread(lookahead, 0, count)
+        return next
     }
 
-    override fun read(buffer: CharArray, offset: Int, length: Int): Int =
-        super.read(buffer, offset, length).also { count ->
-            if (count > 0) scan(String(buffer, offset, count))
+    override fun read(buffer: CharArray, offset: Int, length: Int): Int {
+        if (length == 0) return 0
+        var count = 0
+        while (count < length) {
+            val next = read()
+            if (next < 0) break
+            buffer[offset + count++] = next.toChar()
         }
-
-    private fun scan(chunk: String) {
-        val sample = carry + chunk
-        if (sample.contains("<!DOCTYPE", ignoreCase = true) ||
-            sample.contains("<!ENTITY", ignoreCase = true)) {
-            throw java.io.IOException("DTD is not allowed")
-        }
-        carry = sample.takeLast(8)
+        return if (count == 0) -1 else count
     }
+
+    override fun close() = input.close()
 }

@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -33,6 +34,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,6 +49,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.flow.filter
 
 private val guidePanel = Color(0xFF142539)
 private val guideSubtle = Color(0xFFA9BED1)
@@ -77,6 +80,22 @@ internal fun GuideScreen(
     }
     val dayEnd = remember(dayStart) {
         Calendar.getInstance().apply { timeInMillis = dayStart; add(Calendar.DAY_OF_YEAR, 1) }.timeInMillis
+    }
+    val guideScroll = rememberScrollState()
+    val density = LocalDensity.current
+    val firstScheduled = remember(index, folderChannels, dayStart) {
+        folderChannels.asSequence().flatMap { index?.programmesFor(it).orEmpty().asSequence() }
+            .filter { it.startMillis < dayEnd && it.endMillis > dayStart }
+            .map { maxOf(it.startMillis, dayStart) }.minOrNull() ?: dayStart
+    }
+    LaunchedEffect(dayStart, uiState.folder, firstScheduled) {
+        val targetTime = if (uiState.dayOffset == 0) maxOf(firstScheduled, System.currentTimeMillis() - 30L * 60_000)
+        else firstScheduled
+        val targetDp = ((targetTime.coerceAtMost(dayEnd - 60_000) - dayStart) / 30_000).toInt()
+        val target = with(density) { targetDp.dp.roundToPx() }
+        snapshotFlow { guideScroll.maxValue }.filter { it > 0 }.collect { max ->
+            guideScroll.scrollTo(target.coerceAtMost(max))
+        }
     }
     val rootFocus = remember { FocusRequester() }
     var selected by remember { mutableStateOf<Pair<Channel, EpgProgram>?>(null) }
@@ -136,11 +155,19 @@ internal fun GuideScreen(
                 Text("${if (uiState.dayOffset == 0) "Hoy" else "Mañana"} · ${uiState.folder.lastOrNull() ?: "Todos"}",
                     color = Color.White, fontSize = 24.sp)
                 if (guide == null) {
-                    Text("Vincula una URL XMLTV HTTPS desde Ajustes para consultar datos reales.", color = guideSubtle)
+                    Text("Vincula una guía XMLTV o Xtream HTTPS desde Ajustes para consultar datos reales.", color = guideSubtle)
                     Button(onClick = onOpenSettings) { Text("Abrir ajustes") }
                 } else if (folderChannels.isEmpty()) {
                     Text("No hay canales en esta carpeta.", color = guideSubtle)
                 } else {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(guideScroll)) {
+                        val slotCount = ((dayEnd - dayStart + 3L * 60 * 60_000 - 1) / (3L * 60 * 60_000)).toInt()
+                        for (slot in 0 until slotCount) {
+                            val slotStart = dayStart + slot * 3L * 60 * 60_000
+                            Text(hour(dayStart + slot * 3L * 60 * 60_000), color = guideSubtle,
+                                modifier = Modifier.width(((minOf(dayEnd, slotStart + 3L * 60 * 60_000) - slotStart) / 30_000).toInt().dp))
+                        }
+                    }
                     LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(folderChannels, key = { it.id }) { channel ->
                             val programmes = remember(index, channel, dayStart) {
@@ -153,19 +180,18 @@ internal fun GuideScreen(
                                 if (programmes.isEmpty()) {
                                     Text("Sin datos de programación", color = guideSubtle)
                                 } else {
-                                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        var cursor = maxOf(programmes.first().startMillis, dayStart)
+                                    Row(Modifier.fillMaxWidth().horizontalScroll(guideScroll)) {
+                                        var cursor = dayStart
                                         programmes.forEach { program ->
                                             val start = maxOf(program.startMillis, dayStart)
                                             val end = minOf(program.endMillis, dayEnd)
                                             if (start > cursor) {
-                                                Spacer(Modifier.width(((start - cursor) / 30_000).coerceAtMost(2880).toInt().dp))
+                                                Spacer(Modifier.width(((start - cursor) / 30_000).coerceAtMost(3000).toInt().dp))
                                             }
                                             if (end > maxOf(start, cursor)) {
                                                 val minutes = ((end - maxOf(start, cursor)) / 60_000).coerceAtLeast(1)
                                                 Button(onClick = { selected = channel to program },
-                                                    modifier = Modifier.width((minutes * 2).coerceAtMost(2880).toInt().dp).height(88.dp)) {
+                                                    modifier = Modifier.width((minutes * 2).coerceAtMost(3000).toInt().dp).height(88.dp)) {
                                                     Column {
                                                         Text("${hour(program.startMillis)}–${hour(program.endMillis)}", fontSize = 11.sp)
                                                         Text(program.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -173,6 +199,9 @@ internal fun GuideScreen(
                                                 }
                                             }
                                             cursor = maxOf(cursor, end)
+                                        }
+                                        if (cursor < dayEnd) {
+                                            Spacer(Modifier.width(((dayEnd - cursor) / 30_000).coerceAtMost(3000).toInt().dp))
                                         }
                                     }
                                 }
