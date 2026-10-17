@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
             var sourceName by remember { mutableStateOf("") }
             var sourceUrl by remember { mutableStateOf("") }
             var importing by remember { mutableStateOf(false) }
+            var sourceReturn by remember { mutableStateOf(Screen.Home) }
             var legalReturn by remember { mutableStateOf(Screen.Settings) }
             var legalAccepted by remember {
                 mutableStateOf(getPreferences(MODE_PRIVATE).getBoolean("source_notice_seen", false))
@@ -103,9 +104,9 @@ class MainActivity : ComponentActivity() {
                     drawerVisible -> drawerVisible = false
                     screen == Screen.Source -> {
                         sourceUrl = ""
-                        screen = Screen.Settings
+                        screen = sourceReturn
                     }
-                    screen == Screen.Legal -> screen = Screen.Settings
+                    screen == Screen.Legal -> screen = legalReturn
                     else -> screen = Screen.Home
                 }
             }
@@ -130,14 +131,14 @@ class MainActivity : ComponentActivity() {
                             Screen.Home -> HomeScreen(
                                 channelCount = channels.size,
                                 onChannels = { screen = Screen.Channels },
-                                onAddSource = { screen = Screen.Source },
+                                onAddSource = { sourceReturn = Screen.Home; screen = Screen.Source },
                             )
                             Screen.Channels -> ChannelsScreen(
                                 channels = channels,
                                 index = catalog,
                                 uiState = catalogUi,
                                 onUiStateChange = { catalogUi = it },
-                                onAddSource = { screen = Screen.Source },
+                                onAddSource = { sourceReturn = Screen.Channels; screen = Screen.Source },
                                 preview = preview,
                                 onPreview = { preview = it },
                                 onPlay = { playing = it },
@@ -148,7 +149,7 @@ class MainActivity : ComponentActivity() {
                             Screen.Library -> EmptyScreen("Aún no hay grabaciones. La grabación real está pendiente de validación.")
                             Screen.Settings -> SettingsScreen(
                                 channels,
-                                onAddSource = { screen = Screen.Source },
+                                onAddSource = { sourceReturn = Screen.Settings; screen = Screen.Source },
                                 onLegal = { legalReturn = Screen.Settings; screen = Screen.Legal },
                             )
                             Screen.Source -> SourceScreen(
@@ -196,10 +197,13 @@ class MainActivity : ComponentActivity() {
                             Screen.Legal -> LegalScreen(
                                 acknowledgement = legalReturn == Screen.Source,
                                 onBack = {
-                                legalAccepted = true
-                                getPreferences(MODE_PRIVATE).edit().putBoolean("source_notice_seen", true).apply()
-                                screen = legalReturn
-                            })
+                                    if (legalReturn == Screen.Source) {
+                                        legalAccepted = true
+                                        getPreferences(MODE_PRIVATE).edit().putBoolean("source_notice_seen", true).apply()
+                                    }
+                                    screen = legalReturn
+                                },
+                            )
                         }
                     }
                     if (drawerVisible) {
