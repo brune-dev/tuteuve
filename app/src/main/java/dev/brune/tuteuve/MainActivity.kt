@@ -43,6 +43,8 @@ import androidx.tv.material3.Text
 import dev.brune.tuteuve.data.Channel
 import dev.brune.tuteuve.data.CatalogIndex
 import dev.brune.tuteuve.data.ChannelRepository
+import dev.brune.tuteuve.data.NoCompatibleChannels
+import dev.brune.tuteuve.data.RemoteM3uImporter
 import java.util.concurrent.Executors
 
 private val Ink = Color(0xFF07111F)
@@ -51,11 +53,12 @@ private val Mint = Color(0xFF8DF0CD)
 private val Subtle = Color(0xFFA9BED1)
 
 private enum class Screen(val title: String) {
-    Home("Inicio"), Channels("Canales"), Guide("Guía TV"), Library("Mi biblioteca"), Settings("Ajustes"), Legal("Aviso de uso")
+    Home("Inicio"), Channels("Canales"), Guide("Guía TV"), Library("Mi biblioteca"), Settings("Ajustes"), Source("Añadir fuente"), Legal("Aviso de uso")
 }
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: ChannelRepository
+    private val importer = RemoteM3uImporter()
     private val io = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,6 +73,13 @@ class MainActivity : ComponentActivity() {
             var preview by remember { mutableStateOf<Channel?>(null) }
             var drawerVisible by remember { mutableStateOf(false) }
             var notice by remember { mutableStateOf<String?>(null) }
+            var sourceName by remember { mutableStateOf("") }
+            var sourceUrl by remember { mutableStateOf("") }
+            var importing by remember { mutableStateOf(false) }
+            var legalReturn by remember { mutableStateOf(Screen.Settings) }
+            var legalAccepted by remember {
+                mutableStateOf(getPreferences(MODE_PRIVATE).getBoolean("source_notice_seen", false))
+            }
             LaunchedEffect(Unit) {
                 io.execute {
                     val stored = runCatching {
@@ -91,6 +101,10 @@ class MainActivity : ComponentActivity() {
                 when {
                     playing != null -> playing = null
                     drawerVisible -> drawerVisible = false
+                    screen == Screen.Source -> {
+                        sourceUrl = ""
+                        screen = Screen.Settings
+                    }
                     screen == Screen.Legal -> screen = Screen.Settings
                     else -> screen = Screen.Home
                 }
@@ -113,14 +127,17 @@ class MainActivity : ComponentActivity() {
                             Spacer(Modifier.height(12.dp))
                         }
                         when (screen) {
-                            Screen.Home -> HomeScreen(channels.size) {
-                                screen = Screen.Channels
-                            }
+                            Screen.Home -> HomeScreen(
+                                channelCount = channels.size,
+                                onChannels = { screen = Screen.Channels },
+                                onAddSource = { screen = Screen.Source },
+                            )
                             Screen.Channels -> ChannelsScreen(
                                 channels = channels,
                                 index = catalog,
                                 uiState = catalogUi,
                                 onUiStateChange = { catalogUi = it },
+                                onAddSource = { screen = Screen.Source },
                                 preview = preview,
                                 onPreview = { preview = it },
                                 onPlay = { playing = it },
@@ -129,8 +146,60 @@ class MainActivity : ComponentActivity() {
                             )
                             Screen.Guide -> EmptyScreen("La guía se activará cuando conectemos una fuente EPG real.")
                             Screen.Library -> EmptyScreen("Aún no hay grabaciones. La grabación real está pendiente de validación.")
-                            Screen.Settings -> SettingsScreen(channels, onLegal = { screen = Screen.Legal })
-                            Screen.Legal -> LegalScreen(onBack = { screen = Screen.Settings })
+                            Screen.Settings -> SettingsScreen(
+                                channels,
+                                onAddSource = { screen = Screen.Source },
+                                onLegal = { legalReturn = Screen.Settings; screen = Screen.Legal },
+                            )
+                            Screen.Source -> SourceScreen(
+                                name = sourceName,
+                                url = sourceUrl,
+                                loading = importing,
+                                onNameChange = { sourceName = it },
+                                onUrlChange = { sourceUrl = it },
+                                onSubmit = {
+                                    if (!legalAccepted) {
+                                        legalReturn = Screen.Source
+                                        screen = Screen.Legal
+                                    } else if (!importing) {
+                                        importing = true
+                                        notice = null
+                                        val name = sourceName.trim()
+                                        val url = sourceUrl.trim()
+                                        io.execute {
+                                            val outcome = runCatching {
+                                                val report = importer.import(url, name)
+                                                val loaded = repository.replaceSource(name, report)
+                                                Triple(report, loaded, CatalogIndex(loaded))
+                                            }
+                                            runOnUiThread {
+                                                if (isDestroyed) return@runOnUiThread
+                                                importing = false
+                                                outcome.onSuccess { (report, loaded, built) ->
+                                                    channels = loaded
+                                                    catalog = built
+                                                    sourceUrl = ""
+                                                    screen = Screen.Channels
+                                                    notice = "${report.channels.size} canales añadidos; ${report.ignoredEntries} entradas omitidas" +
+                                                        if (report.httpEntries > 0) " (${report.httpEntries} usan HTTP)" else ""
+                                                }.onFailure { error ->
+                                                    // Never render exception messages: they may contain a private URL.
+                                                    notice = if (error is NoCompatibleChannels && error.httpEntries > 0) {
+                                                        "La fuente no contiene emisiones HTTPS compatibles."
+                                                    } else "No se pudo añadir la fuente. Comprueba la dirección HTTPS y la conexión."
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                            Screen.Legal -> LegalScreen(
+                                acknowledgement = legalReturn == Screen.Source,
+                                onBack = {
+                                legalAccepted = true
+                                getPreferences(MODE_PRIVATE).edit().putBoolean("source_notice_seen", true).apply()
+                                screen = legalReturn
+                            })
                         }
                     }
                     if (drawerVisible) {
@@ -146,43 +215,46 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        io.shutdown()
+        io.shutdownNow()
         super.onDestroy()
     }
 }
 
 @Composable
-private fun HomeScreen(channelCount: Int, onChannels: () -> Unit) {
+private fun HomeScreen(channelCount: Int, onChannels: () -> Unit, onAddSource: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.padding(top = 38.dp)) {
         Text("Tu televisión, organizada a tu manera.", color = Color.White, fontSize = 26.sp)
         Text("$channelCount canales disponibles", color = Subtle, fontSize = 18.sp)
-        if (channelCount > 0) Button(onClick = onChannels) { Text("Ver canales") }
-        else Text("Alta de fuentes en preparación: URL M3U y Xtream.", color = Subtle)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Button(onClick = onAddSource) { Text("Añadir URL M3U") }
+            if (channelCount > 0) Button(onClick = onChannels) { Text("Ver canales") }
+        }
         Text("tuteuve no incluye canales ni listas. Utiliza solo fuentes que tengas derecho a usar.", color = Subtle)
     }
 }
 
 @Composable
-private fun SettingsScreen(channels: List<Channel>, onLegal: () -> Unit) {
+private fun SettingsScreen(channels: List<Channel>, onAddSource: () -> Unit, onLegal: () -> Unit) {
     val sources = remember(channels) { channels.groupingBy { it.sourceName }.eachCount() }
     Column(Modifier.padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text("Fuentes locales", color = Color.White, fontSize = 24.sp)
         if (sources.isEmpty()) Text("No hay fuentes importadas.", color = Subtle)
         sources.forEach { (name, count) -> Text("$name · $count canales", color = Subtle) }
-        Text("Alta de fuentes en preparación: URL M3U y Xtream.", color = Subtle)
+        Button(onClick = onAddSource) { Text("Añadir URL M3U") }
+        Text("Xtream está en preparación; las credenciales aún no se solicitan.", color = Subtle)
         Button(onClick = onLegal) { Text("Aviso de uso") }
         Text("No hay cuenta, analítica, telemetría ni servidor de tuteuve.", color = Subtle)
     }
 }
 
 @Composable
-private fun LegalScreen(onBack: () -> Unit) {
+private fun LegalScreen(acknowledgement: Boolean, onBack: () -> Unit) {
     val context = LocalContext.current
     val fullNotice = remember { context.assets.open("DISCLAIMER.txt").bufferedReader().use { it.readText() } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 22.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
         Text("Antes de añadir una fuente", color = Mint, fontSize = 24.sp)
         Text(fullNotice, color = Color.White, fontSize = 17.sp)
-        Button(onClick = onBack) { Text("Volver a ajustes") }
+        Button(onClick = onBack) { Text(if (acknowledgement) "He leído el aviso" else "Volver a ajustes") }
     }
 }
 
@@ -198,7 +270,7 @@ private fun NavigationDrawer(current: Screen, onSelect: (Screen) -> Unit) {
     Column(Modifier.width(290.dp).fillMaxSize().background(Panel).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("tuteuve", fontFamily = FontFamily.Cursive, color = Mint, fontSize = 31.sp)
         Spacer(Modifier.height(16.dp))
-        Screen.entries.filter { it != Screen.Legal }.forEachIndexed { index, screen ->
+        Screen.entries.filter { it != Screen.Legal && it != Screen.Source }.forEachIndexed { index, screen ->
             Button(onClick = { onSelect(screen) }, modifier = Modifier.fillMaxWidth().then(if (index == 0) Modifier.focusRequester(firstItem) else Modifier)) {
                 Text(if (screen == current) "● ${screen.title}" else screen.title)
             }

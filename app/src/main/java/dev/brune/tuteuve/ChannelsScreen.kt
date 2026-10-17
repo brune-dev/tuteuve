@@ -73,6 +73,7 @@ internal fun ChannelsScreen(
     index: CatalogIndex,
     uiState: CatalogUiState,
     onUiStateChange: (CatalogUiState) -> Unit,
+    onAddSource: () -> Unit,
     preview: Channel?,
     onPreview: (Channel) -> Unit,
     onPlay: (Channel) -> Unit,
@@ -135,6 +136,7 @@ internal fun ChannelsScreen(
                     Text("${visible.size} canales", color = subtle, fontSize = 14.sp)
                 }
                 Button(onClick = { onUiStateChange(uiState.copy(grid = !grid)) }) { Text(if (grid) "☰ Lista" else "▦ Cuadrícula") }
+                Button(onClick = onAddSource) { Text("Añadir URL") }
             }
             BasicTextField(
                 value = query,
@@ -152,7 +154,7 @@ internal fun ChannelsScreen(
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (visible.isEmpty()) {
                     Text(
-                        if (channels.isEmpty()) "Todavía no hay canales. El alta por URL M3U y Xtream está en preparación."
+                        if (channels.isEmpty()) "Todavía no hay canales. Añade una URL M3U HTTPS para empezar."
                         else "No hay canales en esta carpeta o búsqueda.",
                         color = subtle,
                         modifier = Modifier.weight(1f),
