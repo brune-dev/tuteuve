@@ -10,7 +10,7 @@ La alpha debe cubrir los journeys J1–J4. J5–J7 quedan planificados y se impl
 
 | Journey | Experiencia de la persona usuaria | Entrega |
 | --- | --- | --- |
-| J1 · Incorporar fuentes | Nombra una fuente, añade M3U o credenciales Xtream, consulta el estado y actualiza manualmente. Puede tener varias fuentes. | Alpha, con Xtream sujeto a una fuente de prueba autorizada. |
+| J1 · Incorporar fuentes | Consulta el aviso de uso, nombra una fuente, añade M3U o credenciales Xtream, consulta el estado y actualiza manualmente. Puede tener varias fuentes. | Alpha, con Xtream sujeto a una fuente de prueba autorizada. |
 | J2 · Descubrir canales | Entra en carpetas, ve su número de canales, alterna cuadrícula/lista, busca, marca favoritos y crea listas. El mando mantiene el foco visible. | Alpha. |
 | J3 · Saber qué emiten | Filtra la guía por carpeta, ve el programa actual y su duración restante, abre la ficha y consulta hoy/mañana. | Alpha si existe XMLTV o EPG del proveedor; sin datos, se informa claramente. |
 | J4 · Ver contenido | Selecciona un canal, ve su vista previa y pasa a pantalla completa. La calidad automática elige entre pistas reproducibles; se muestran resolución y FPS reales si se conocen. | Alpha. |
@@ -70,6 +70,7 @@ Los issues se crean en GitHub con criterios de aceptación verificables. `P0` bl
 - Se publica el código, la licencia, instrucciones de compilación, una APK alpha y limitaciones conocidas.
 - El análisis estático y las pruebas relevantes pasan; la estructura del código y los comentarios explican decisiones no obvias.
 - Se completa el [plan de pruebas de seguridad](SECURITY.md) sin fugas, componentes expuestos innecesarios, telemetría ni permisos excesivos. Los hallazgos se resuelven antes de publicar la APK.
+- El [descargo de responsabilidad](DISCLAIMER.md) está enlazado en el repositorio y accesible desde Ajustes; su resumen se muestra antes de añadir la primera fuente. El usuario puede consultarlo después sin perder sus ajustes.
 
 ## Después de la alpha
 
