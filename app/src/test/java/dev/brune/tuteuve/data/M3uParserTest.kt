@@ -33,6 +33,7 @@ class M3uParserTest {
         """.trimIndent())
         assertTrue(result.channels.isEmpty())
         assertEquals(4, result.ignoredEntries)
+        assertEquals(1, result.httpEntries)
     }
 
     @Test fun rejectsOversizedLineBeforeSavingAnything() {

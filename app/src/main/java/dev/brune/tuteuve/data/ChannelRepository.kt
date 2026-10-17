@@ -39,7 +39,7 @@ class ChannelRepository(private val context: Context) {
         val sourceName = displayName(uri)
         val parsed = context.contentResolver.openInputStream(uri)?.use { parser.parse(it, sourceName) }
             ?: error("No se pudo abrir el archivo")
-        require(parsed.channels.isNotEmpty()) { "La lista no contiene emisiones HTTPS compatibles" }
+        if (parsed.channels.isEmpty()) throw NoCompatibleChannels(parsed.httpEntries)
         val existing = load().filterNot { it.sourceName == sourceName }
         val merged = (existing + parsed.channels).distinctBy { it.id }
         save(merged)
@@ -76,3 +76,5 @@ class ChannelRepository(private val context: Context) {
         }
     }
 }
+
+class NoCompatibleChannels(val httpEntries: Int) : Exception()

@@ -52,6 +52,7 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.Text
 import dev.brune.tuteuve.data.Channel
 import dev.brune.tuteuve.data.ChannelRepository
+import dev.brune.tuteuve.data.NoCompatibleChannels
 
 private val Ink = Color(0xFF07111F)
 private val Panel = Color(0xFF142539)
@@ -99,10 +100,15 @@ class MainActivity : ComponentActivity() {
                             result.onSuccess {
                                 channels = repository.load()
                                 screen = Screen.Channels
-                                notice = "${it.channels.size} canales importados; ${it.ignoredEntries} entradas omitidas"
-                            }.onFailure {
-                                // Never display exception text: provider errors can contain private URLs.
-                                notice = "No se pudo importar la lista. Comprueba el archivo y usa emisiones HTTPS."
+                                notice = "${it.channels.size} canales importados; ${it.ignoredEntries} entradas omitidas" +
+                                    (if (it.httpEntries > 0) " (${it.httpEntries} usan HTTP y requieren revisión)" else "")
+                            }.onFailure { error ->
+                                // Never display arbitrary exception text: provider errors can contain private URLs.
+                                notice = if (error is NoCompatibleChannels && error.httpEntries > 0) {
+                                    "No hay emisiones HTTPS. ${error.httpEntries} usan HTTP y requieren revisión de privacidad."
+                                } else {
+                                    "No se pudo importar la lista. Comprueba el archivo y usa emisiones HTTPS."
+                                }
                             }
                         }
                     }.start()

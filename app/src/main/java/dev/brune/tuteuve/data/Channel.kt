@@ -11,4 +11,5 @@ data class Channel(
 data class ImportResult(
     val channels: List<Channel>,
     val ignoredEntries: Int,
+    val httpEntries: Int,
 )

@@ -13,11 +13,12 @@ class M3uParser {
         val channels = ArrayList<Channel>()
         var lineCount = 0
         var ignored = 0
+        var httpEntries = 0
         var pending: Metadata? = null
-        reader.forEachLine { raw ->
+        while (true) {
+            val raw = readBoundedLine(reader) ?: break
             lineCount++
             require(lineCount <= MAX_LINES) { "La lista supera el límite de líneas" }
-            require(raw.length <= MAX_LINE_LENGTH) { "La lista contiene una línea demasiado larga" }
             val line = raw.trim().trimStart('\uFEFF')
             when {
                 line.startsWith("#EXTINF:", ignoreCase = true) -> pending = parseMetadata(line)
@@ -28,6 +29,7 @@ class M3uParser {
                     val url = safeStreamUrl(line)
                     if (metadata == null || url == null) {
                         ignored++
+                        if (line.startsWith("http://", ignoreCase = true)) httpEntries++
                     } else {
                         require(channels.size < MAX_CHANNELS) { "La lista supera el límite de canales" }
                         channels += Channel(
@@ -41,7 +43,18 @@ class M3uParser {
                 }
             }
         }
-        return ImportResult(channels, ignored)
+        return ImportResult(channels, ignored, httpEntries)
+    }
+
+    private fun readBoundedLine(reader: BufferedReader): String? {
+        val line = StringBuilder()
+        while (true) {
+            val character = reader.read()
+            if (character == -1) return if (line.isEmpty()) null else line.toString()
+            if (character == '\n'.code) return line.toString()
+            require(line.length < MAX_LINE_LENGTH) { "La lista contiene una línea demasiado larga" }
+            line.append(character.toChar())
+        }
     }
 
     private fun parseMetadata(line: String): Metadata? {
