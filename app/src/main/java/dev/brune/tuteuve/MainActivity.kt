@@ -6,6 +6,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,6 +38,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,6 +50,8 @@ import dev.brune.tuteuve.data.Channel
 import dev.brune.tuteuve.data.CatalogIndex
 import dev.brune.tuteuve.data.ChannelRepository
 import dev.brune.tuteuve.data.NoCompatibleChannels
+import dev.brune.tuteuve.data.ImportFailure
+import dev.brune.tuteuve.data.ImportFailureReason
 import dev.brune.tuteuve.data.RemoteM3uImporter
 import java.util.concurrent.Executors
 
@@ -58,6 +64,7 @@ private enum class Screen(val title: String) {
     Home("Inicio"), Channels("Canales"), Guide("Guía TV"), Library("Mi biblioteca"), Settings("Ajustes"), Source("Añadir fuente"), Legal("Aviso de uso")
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 class MainActivity : ComponentActivity() {
     private lateinit var repository: ChannelRepository
     private val importer = RemoteM3uImporter()
@@ -84,6 +91,8 @@ class MainActivity : ComponentActivity() {
             var legalAccepted by remember {
                 mutableStateOf(getPreferences(MODE_PRIVATE).getBoolean("source_notice_seen", false))
             }
+            val keyboard = LocalSoftwareKeyboardController.current
+            val imeVisible = WindowInsets.isImeVisible
             LaunchedEffect(Unit) {
                 io.execute {
                     val stored = runCatching {
@@ -106,8 +115,10 @@ class MainActivity : ComponentActivity() {
                     playing != null -> playing = null
                     drawerVisible -> drawerVisible = false
                     screen == Screen.Source -> {
-                        sourceUrl = ""
-                        screen = sourceReturn
+                        if (imeVisible) keyboard?.hide() else {
+                            sourceUrl = ""
+                            screen = sourceReturn
+                        }
                     }
                     screen == Screen.Legal -> screen = legalReturn
                     else -> screen = Screen.Home
@@ -236,9 +247,20 @@ class MainActivity : ComponentActivity() {
                                                         if (report.httpEntries > 0) " (${report.httpEntries} usan HTTP)" else ""
                                                 }.onFailure { error ->
                                                     // Never render exception messages: they may contain a private URL.
-                                                    notice = if (error is NoCompatibleChannels && error.httpEntries > 0) {
-                                                        "La fuente no contiene emisiones HTTPS compatibles."
-                                                    } else "No se pudo añadir la fuente. Comprueba la dirección HTTPS y la conexión."
+                                                    notice = when {
+                                                        error is NoCompatibleChannels && error.httpEntries > 0 -> "La fuente no contiene emisiones HTTPS compatibles."
+                                                        error is NoCompatibleChannels -> "La fuente no contiene canales compatibles."
+                                                        error is ImportFailure -> when (error.reason) {
+                                                            ImportFailureReason.ADDRESS -> "La dirección debe ser HTTPS y no puede apuntar a una red local."
+                                                            ImportFailureReason.NAME -> "Introduce un nombre de fuente válido."
+                                                            ImportFailureReason.RESPONSE -> "El servidor no entregó la lista solicitada."
+                                                            ImportFailureReason.CONTENT -> "La respuesta no tiene un formato M3U compatible."
+                                                            ImportFailureReason.DNS -> "No se pudo resolver el servidor o el destino está bloqueado."
+                                                            ImportFailureReason.TLS -> "No se pudo verificar la conexión segura del servidor."
+                                                            ImportFailureReason.NETWORK -> "No se pudo completar la conexión con el servidor."
+                                                        }
+                                                        else -> "No se pudo guardar la fuente en el dispositivo."
+                                                    }
                                                 }
                                             }
                                         }

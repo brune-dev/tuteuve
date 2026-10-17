@@ -8,6 +8,12 @@ import java.net.InetAddress
 import java.net.Proxy
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLException
+
+enum class ImportFailureReason { ADDRESS, NAME, RESPONSE, CONTENT, DNS, TLS, NETWORK }
+
+/** Deliberately carries no URL, credentials or response body. */
+class ImportFailure(val reason: ImportFailureReason) : Exception()
 
 /** Fetches only an explicitly entered HTTPS playlist, without redirects or local-network targets. */
 class RemoteM3uImporter {
@@ -15,13 +21,27 @@ class RemoteM3uImporter {
     private val parser = M3uParser()
 
     fun import(url: String, sourceName: String): ImportResult {
-        require(SourceAddressPolicy.accepts(url)) { "Dirección no permitida" }
-        require(sourceName.isNotBlank() && sourceName.length <= 80) { "Nombre no permitido" }
-        val request = Request.Builder().url(url).get().build()
-        client.newCall(request).execute().use { response ->
-            require(response.isSuccessful) { "Respuesta no válida" }
-            val body = response.body ?: error("Respuesta vacía")
-            return body.byteStream().use { parser.parse(it, sourceName) }
+        if (!SourceAddressPolicy.accepts(url)) throw ImportFailure(ImportFailureReason.ADDRESS)
+        if (sourceName.isBlank() || sourceName.length > 80) throw ImportFailure(ImportFailureReason.NAME)
+        try {
+            val request = Request.Builder().url(url).get().build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw ImportFailure(ImportFailureReason.RESPONSE)
+                val body = response.body ?: throw ImportFailure(ImportFailureReason.CONTENT)
+                return try {
+                    body.byteStream().use { parser.parse(it, sourceName) }
+                } catch (_: IllegalArgumentException) {
+                    throw ImportFailure(ImportFailureReason.CONTENT)
+                }
+            }
+        } catch (error: ImportFailure) {
+            throw error
+        } catch (_: UnknownHostException) {
+            throw ImportFailure(ImportFailureReason.DNS)
+        } catch (_: SSLException) {
+            throw ImportFailure(ImportFailureReason.TLS)
+        } catch (_: IOException) {
+            throw ImportFailure(ImportFailureReason.NETWORK)
         }
     }
 }
