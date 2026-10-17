@@ -11,7 +11,8 @@ import java.io.FileNotFoundException
 
 /** Keeps imported channel URLs inside app-private storage; never logs source contents. */
 class ChannelRepository(private val context: Context) {
-    private val store = AtomicFile(File(context.filesDir, "channels.json"))
+    // Android excludes noBackupFilesDir even on devices that still allow device-to-device transfer.
+    private val store = AtomicFile(File(context.noBackupFilesDir, "channels.json"))
     private val parser = M3uParser()
 
     fun load(): List<Channel> {

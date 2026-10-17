@@ -49,6 +49,7 @@ import androidx.tv.material3.Text
 import dev.brune.tuteuve.data.Channel
 import dev.brune.tuteuve.data.ChannelRepository
 import dev.brune.tuteuve.data.NoCompatibleChannels
+import java.util.concurrent.Executors
 
 private val Ink = Color(0xFF07111F)
 private val Panel = Color(0xFF142539)
@@ -61,6 +62,7 @@ private enum class Screen(val title: String) {
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: ChannelRepository
+    private val io = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -76,22 +78,24 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(getPreferences(MODE_PRIVATE).getBoolean("source_notice_seen", false))
             }
             LaunchedEffect(Unit) {
-                Thread {
+                io.execute {
                     val stored = runCatching { repository.load() }
                     runOnUiThread {
+                        if (isDestroyed) return@runOnUiThread
                         stored.onSuccess { channels = it }.onFailure {
                             notice = "No se pudieron leer las fuentes guardadas. No se han modificado."
                         }
                     }
-                }.start()
+                }
             }
             val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                 if (uri != null) {
                     importing = true
                     // A local document is opened only for this import; no URI grant is retained.
-                    Thread {
+                    io.execute {
                         val result = runCatching { repository.import(uri) }
                         runOnUiThread {
+                            if (isDestroyed) return@runOnUiThread
                             importing = false
                             result.onSuccess {
                                 channels = repository.load()
@@ -107,7 +111,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
-                    }.start()
+                    }
                 }
             }
             val importAction = {
@@ -143,10 +147,10 @@ class MainActivity : ComponentActivity() {
                             Screen.Home -> HomeScreen(channels.size, importing, importAction) {
                                 screen = Screen.Channels
                             }
-                            Screen.Channels -> ChannelsScreen(channels, importAction) { playing = it }
+                            Screen.Channels -> ChannelsScreen(channels, importing, importAction) { playing = it }
                             Screen.Guide -> EmptyScreen("La guía se activará cuando conectemos una fuente EPG real.")
                             Screen.Library -> EmptyScreen("Aún no hay grabaciones. La grabación real está pendiente de validación.")
-                            Screen.Settings -> SettingsScreen(channels, importAction, onLegal = { screen = Screen.Legal })
+                            Screen.Settings -> SettingsScreen(channels, importing, importAction, onLegal = { screen = Screen.Legal })
                             Screen.Legal -> LegalScreen(onContinue = {
                                 legalAccepted = true
                                 getPreferences(MODE_PRIVATE).edit().putBoolean("source_notice_seen", true).apply()
@@ -166,6 +170,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onDestroy() {
+        io.shutdown()
+        super.onDestroy()
+    }
 }
 
 @Composable
@@ -182,7 +191,7 @@ private fun HomeScreen(channelCount: Int, importing: Boolean, onImport: () -> Un
 }
 
 @Composable
-private fun ChannelsScreen(channels: List<Channel>, onImport: () -> Unit, onPlay: (Channel) -> Unit) {
+private fun ChannelsScreen(channels: List<Channel>, importing: Boolean, onImport: () -> Unit, onPlay: (Channel) -> Unit) {
     var folder by remember { mutableStateOf<String?>(null) }
     val folders = remember(channels) { channels.groupingBy { it.group }.eachCount().toSortedMap() }
     val visible = remember(channels, folder) { if (folder == null) channels else channels.filter { it.group == folder } }
@@ -204,7 +213,7 @@ private fun ChannelsScreen(channels: List<Channel>, onImport: () -> Unit, onPlay
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(folder ?: "Todos", color = Color.White, fontSize = 24.sp)
                 Text("${visible.size} canales", color = Subtle)
-                Button(onClick = onImport) { Text("Añadir fuente") }
+                Button(onClick = onImport, enabled = !importing) { Text("Añadir fuente") }
             }
             Spacer(Modifier.height(14.dp))
             if (visible.isEmpty()) {
@@ -226,14 +235,14 @@ private fun ChannelsScreen(channels: List<Channel>, onImport: () -> Unit, onPlay
 }
 
 @Composable
-private fun SettingsScreen(channels: List<Channel>, onImport: () -> Unit, onLegal: () -> Unit) {
+private fun SettingsScreen(channels: List<Channel>, importing: Boolean, onImport: () -> Unit, onLegal: () -> Unit) {
     val sources = remember(channels) { channels.groupingBy { it.sourceName }.eachCount() }
     Column(Modifier.padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text("Fuentes locales", color = Color.White, fontSize = 24.sp)
         if (sources.isEmpty()) Text("No hay fuentes importadas.", color = Subtle)
         sources.forEach { (name, count) -> Text("$name · $count canales", color = Subtle) }
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Button(onClick = onImport) { Text("Añadir lista M3U") }
+            Button(onClick = onImport, enabled = !importing) { Text("Añadir lista M3U") }
             Button(onClick = onLegal) { Text("Aviso de uso") }
         }
         Text("No hay cuenta, analítica, telemetría ni servidor de tuteuve.", color = Subtle)
