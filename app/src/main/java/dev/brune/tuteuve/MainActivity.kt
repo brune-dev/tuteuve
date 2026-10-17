@@ -7,7 +7,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -40,13 +37,13 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.tv.material3.Button
 import androidx.tv.material3.Text
 import dev.brune.tuteuve.data.Channel
+import dev.brune.tuteuve.data.CatalogIndex
 import dev.brune.tuteuve.data.ChannelRepository
 import dev.brune.tuteuve.data.NoCompatibleChannels
 import java.util.concurrent.Executors
@@ -69,8 +66,10 @@ class MainActivity : ComponentActivity() {
         repository = ChannelRepository(applicationContext)
         setContent {
             var channels by remember { mutableStateOf(emptyList<Channel>()) }
+            var catalog by remember { mutableStateOf(CatalogIndex(emptyList())) }
             var screen by remember { mutableStateOf(Screen.Home) }
             var playing by remember { mutableStateOf<Channel?>(null) }
+            var preview by remember { mutableStateOf<Channel?>(null) }
             var drawerVisible by remember { mutableStateOf(false) }
             var notice by remember { mutableStateOf<String?>(null) }
             var importing by remember { mutableStateOf(false) }
@@ -79,10 +78,16 @@ class MainActivity : ComponentActivity() {
             }
             LaunchedEffect(Unit) {
                 io.execute {
-                    val stored = runCatching { repository.load() }
+                    val stored = runCatching {
+                        val loaded = repository.load()
+                        loaded to CatalogIndex(loaded)
+                    }
                     runOnUiThread {
                         if (isDestroyed) return@runOnUiThread
-                        stored.onSuccess { channels = it }.onFailure {
+                        stored.onSuccess { (loaded, built) ->
+                            channels = loaded
+                            catalog = built
+                        }.onFailure {
                             notice = "No se pudieron leer las fuentes guardadas. No se han modificado."
                         }
                     }
@@ -93,15 +98,20 @@ class MainActivity : ComponentActivity() {
                     importing = true
                     // A local document is opened only for this import; no URI grant is retained.
                     io.execute {
-                        val result = runCatching { repository.import(uri) }
+                        val result = runCatching {
+                            val report = repository.import(uri)
+                            val loaded = repository.load()
+                            Triple(report, loaded, CatalogIndex(loaded))
+                        }
                         runOnUiThread {
                             if (isDestroyed) return@runOnUiThread
                             importing = false
-                            result.onSuccess {
-                                channels = repository.load()
+                            result.onSuccess { (report, loaded, built) ->
+                                channels = loaded
+                                catalog = built
                                 screen = Screen.Channels
-                                notice = "${it.channels.size} canales importados; ${it.ignoredEntries} entradas omitidas" +
-                                    (if (it.httpEntries > 0) " (${it.httpEntries} usan HTTP y requieren revisión)" else "")
+                                notice = "${report.channels.size} canales importados; ${report.ignoredEntries} entradas omitidas" +
+                                    (if (report.httpEntries > 0) " (${report.httpEntries} usan HTTP y requieren revisión)" else "")
                             }.onFailure { error ->
                                 // Never display arbitrary exception text: provider errors can contain private URLs.
                                 notice = if (error is NoCompatibleChannels && error.httpEntries > 0) {
@@ -131,7 +141,7 @@ class MainActivity : ComponentActivity() {
                 PlayerScreen(playing!!, lifecycle, onBack = { playing = null })
             } else {
                 Box(Modifier.fillMaxSize().background(Ink).onPreviewKeyEvent { event ->
-                    if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft && !drawerVisible) {
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft && !drawerVisible && screen != Screen.Channels) {
                         drawerVisible = true
                         true
                     } else false
@@ -147,7 +157,17 @@ class MainActivity : ComponentActivity() {
                             Screen.Home -> HomeScreen(channels.size, importing, importAction) {
                                 screen = Screen.Channels
                             }
-                            Screen.Channels -> ChannelsScreen(channels, importing, importAction) { playing = it }
+                            Screen.Channels -> ChannelsScreen(
+                                channels = channels,
+                                index = catalog,
+                                importing = importing,
+                                onImport = importAction,
+                                preview = preview,
+                                onPreview = { preview = it },
+                                onPlay = { playing = it },
+                                onOpenDrawer = { drawerVisible = true },
+                                lifecycle = lifecycle,
+                            )
                             Screen.Guide -> EmptyScreen("La guía se activará cuando conectemos una fuente EPG real.")
                             Screen.Library -> EmptyScreen("Aún no hay grabaciones. La grabación real está pendiente de validación.")
                             Screen.Settings -> SettingsScreen(channels, importing, importAction, onLegal = { screen = Screen.Legal })
@@ -187,50 +207,6 @@ private fun HomeScreen(channelCount: Int, importing: Boolean, onImport: () -> Un
             if (channelCount > 0) Button(onClick = onChannels) { Text("Ver canales") }
         }
         Text("tuteuve no incluye canales ni listas. Utiliza solo fuentes que tengas derecho a usar.", color = Subtle)
-    }
-}
-
-@Composable
-private fun ChannelsScreen(channels: List<Channel>, importing: Boolean, onImport: () -> Unit, onPlay: (Channel) -> Unit) {
-    var folder by remember { mutableStateOf<String?>(null) }
-    val folders = remember(channels) { channels.groupingBy { it.group }.eachCount().toSortedMap() }
-    val visible = remember(channels, folder) { if (folder == null) channels else channels.filter { it.group == folder } }
-    Row(Modifier.fillMaxSize().padding(top = 22.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        Column(Modifier.width(260.dp).background(Panel).padding(16.dp)) {
-            Text("CARPETAS", color = Subtle, fontSize = 14.sp)
-            Spacer(Modifier.height(12.dp))
-            Button(onClick = { folder = null }, modifier = Modifier.fillMaxWidth()) { Text("Todos · ${channels.size}") }
-            Spacer(Modifier.height(10.dp))
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(folders.entries.toList(), key = { it.key }) { item ->
-                    Button(onClick = { folder = item.key }, modifier = Modifier.fillMaxWidth()) {
-                        Text("${item.key} · ${item.value}", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        }
-        Column(Modifier.weight(1f)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(folder ?: "Todos", color = Color.White, fontSize = 24.sp)
-                Text("${visible.size} canales", color = Subtle)
-                Button(onClick = onImport, enabled = !importing) { Text("Añadir fuente") }
-            }
-            Spacer(Modifier.height(14.dp))
-            if (visible.isEmpty()) {
-                Text("Importa una lista M3U para explorar tus canales.", color = Subtle)
-            } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    items(visible, key = { it.id }) { channel ->
-                        Button(onClick = { onPlay(channel) }, modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.fillMaxWidth()) {
-                                Text(channel.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${channel.group} · ${channel.sourceName}", color = Subtle, fontSize = 13.sp)
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
