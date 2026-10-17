@@ -33,6 +33,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.annotation:annotation-experimental:1.6.0")
     implementation(platform("androidx.compose:compose-bom:2026.03.00"))
     implementation("androidx.activity:activity-compose:1.12.4")
     implementation("androidx.compose.foundation:foundation")
