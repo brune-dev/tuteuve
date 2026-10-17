@@ -42,13 +42,11 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Button
 import androidx.tv.material3.Text
 import dev.brune.tuteuve.data.Channel
-import dev.brune.tuteuve.data.SafeHttpClient
+import dev.brune.tuteuve.data.secureMediaSources
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -69,8 +67,7 @@ private data class PlaybackUi(
 internal fun PlayerScreen(channel: Channel, lifecycle: Lifecycle, onBack: () -> Unit) {
     val context = LocalContext.current
     val player = remember(channel) {
-        val mediaSources = DefaultMediaSourceFactory(OkHttpDataSource.Factory(SafeHttpClient.client))
-        ExoPlayer.Builder(context).setMediaSourceFactory(mediaSources).build().apply {
+        ExoPlayer.Builder(context).setMediaSourceFactory(secureMediaSources()).build().apply {
             setMediaItem(MediaItem.fromUri(channel.streamUrl))
             prepare()
             playWhenReady = true

@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -76,6 +78,7 @@ class MainActivity : ComponentActivity() {
             var sourceName by remember { mutableStateOf("") }
             var sourceUrl by remember { mutableStateOf("") }
             var importing by remember { mutableStateOf(false) }
+            var removingSource by remember { mutableStateOf<String?>(null) }
             var sourceReturn by remember { mutableStateOf(Screen.Home) }
             var legalReturn by remember { mutableStateOf(Screen.Settings) }
             var legalAccepted by remember {
@@ -131,14 +134,24 @@ class MainActivity : ComponentActivity() {
                             Screen.Home -> HomeScreen(
                                 channelCount = channels.size,
                                 onChannels = { screen = Screen.Channels },
-                                onAddSource = { sourceReturn = Screen.Home; screen = Screen.Source },
+                                onAddSource = {
+                                    sourceName = ""
+                                    sourceUrl = ""
+                                    sourceReturn = Screen.Home
+                                    screen = Screen.Source
+                                },
                             )
                             Screen.Channels -> ChannelsScreen(
                                 channels = channels,
                                 index = catalog,
                                 uiState = catalogUi,
                                 onUiStateChange = { catalogUi = it },
-                                onAddSource = { sourceReturn = Screen.Channels; screen = Screen.Source },
+                                onAddSource = {
+                                    sourceName = ""
+                                    sourceUrl = ""
+                                    sourceReturn = Screen.Channels
+                                    screen = Screen.Source
+                                },
                                 preview = preview,
                                 onPreview = { preview = it },
                                 onPlay = { playing = it },
@@ -149,12 +162,50 @@ class MainActivity : ComponentActivity() {
                             Screen.Library -> EmptyScreen("Aún no hay grabaciones. La grabación real está pendiente de validación.")
                             Screen.Settings -> SettingsScreen(
                                 channels,
-                                onAddSource = { sourceReturn = Screen.Settings; screen = Screen.Source },
+                                removingSource = removingSource,
+                                onAddSource = {
+                                    sourceName = ""
+                                    sourceUrl = ""
+                                    sourceReturn = Screen.Settings
+                                    screen = Screen.Source
+                                },
+                                onUpdateSource = { name ->
+                                    sourceName = name
+                                    sourceUrl = ""
+                                    sourceReturn = Screen.Settings
+                                    screen = Screen.Source
+                                },
+                                onRemoveSource = { name ->
+                                    if (removingSource == null) {
+                                        removingSource = name
+                                        io.execute {
+                                            val outcome = runCatching {
+                                                val loaded = repository.removeSource(name)
+                                                loaded to CatalogIndex(loaded)
+                                            }
+                                            runOnUiThread {
+                                                if (isDestroyed) return@runOnUiThread
+                                                removingSource = null
+                                                outcome.onSuccess { (loaded, built) ->
+                                                    channels = loaded
+                                                    catalog = built
+                                                    if (preview?.sourceName == name) preview = null
+                                                    if (sourceName == name) sourceName = ""
+                                                    catalogUi = catalogUi.copy(folder = emptyList())
+                                                    notice = "Fuente retirada del dispositivo."
+                                                }.onFailure {
+                                                    notice = "No se pudo retirar la fuente."
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
                                 onLegal = { legalReturn = Screen.Settings; screen = Screen.Legal },
                             )
                             Screen.Source -> SourceScreen(
                                 name = sourceName,
                                 url = sourceUrl,
+                                updating = channels.any { it.sourceName == sourceName.trim() },
                                 loading = importing,
                                 onNameChange = { sourceName = it },
                                 onUrlChange = { sourceUrl = it },
@@ -238,16 +289,42 @@ private fun HomeScreen(channelCount: Int, onChannels: () -> Unit, onAddSource: (
 }
 
 @Composable
-private fun SettingsScreen(channels: List<Channel>, onAddSource: () -> Unit, onLegal: () -> Unit) {
-    val sources = remember(channels) { channels.groupingBy { it.sourceName }.eachCount() }
-    Column(Modifier.padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Text("Fuentes locales", color = Color.White, fontSize = 24.sp)
-        if (sources.isEmpty()) Text("No hay fuentes importadas.", color = Subtle)
-        sources.forEach { (name, count) -> Text("$name · $count canales", color = Subtle) }
-        Button(onClick = onAddSource) { Text("Añadir URL M3U") }
-        Text("Xtream está en preparación; las credenciales aún no se solicitan.", color = Subtle)
-        Button(onClick = onLegal) { Text("Aviso de uso") }
-        Text("No hay cuenta, analítica, telemetría ni servidor de tuteuve.", color = Subtle)
+private fun SettingsScreen(
+    channels: List<Channel>,
+    removingSource: String?,
+    onAddSource: () -> Unit,
+    onUpdateSource: (String) -> Unit,
+    onRemoveSource: (String) -> Unit,
+    onLegal: () -> Unit,
+) {
+    val sources = remember(channels) {
+        channels.groupingBy { it.sourceName }.eachCount().toList().sortedBy { it.first.lowercase() }
+    }
+    var pendingRemoval by remember { mutableStateOf<String?>(null) }
+    LazyColumn(Modifier.fillMaxSize().padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        item { Text("Fuentes locales", color = Color.White, fontSize = 24.sp) }
+        if (sources.isEmpty()) item { Text("No hay fuentes importadas.", color = Subtle) }
+        items(sources, key = { it.first }) { (name, count) ->
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("$name · $count canales", color = Subtle, modifier = Modifier.weight(1f))
+                    Button(onClick = { onUpdateSource(name) }, enabled = removingSource == null) { Text("Actualizar") }
+                    Button(onClick = { pendingRemoval = name }, enabled = removingSource == null) { Text("Quitar") }
+                }
+                if (pendingRemoval == name) {
+                    Text("¿Retirar esta fuente y todos sus canales de este dispositivo?", color = Color.White)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(onClick = { pendingRemoval = null }) { Text("Cancelar") }
+                        Button(onClick = { pendingRemoval = null; onRemoveSource(name) }) { Text("Confirmar retirada") }
+                    }
+                }
+            }
+        }
+        if (removingSource != null) item { Text("Retirando fuente…", color = Subtle) }
+        item { Button(onClick = onAddSource) { Text("Añadir URL M3U") } }
+        item { Text("Xtream está en preparación; las credenciales aún no se solicitan.", color = Subtle) }
+        item { Button(onClick = onLegal) { Text("Aviso de uso") } }
+        item { Text("No hay cuenta, analítica, telemetría ni servidor de tuteuve.", color = Subtle) }
     }
 }
 

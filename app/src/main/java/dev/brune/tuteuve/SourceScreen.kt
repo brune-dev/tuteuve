@@ -31,6 +31,7 @@ private val sourceSubtle = Color(0xFFA9BED1)
 internal fun SourceScreen(
     name: String,
     url: String,
+    updating: Boolean,
     loading: Boolean,
     onNameChange: (String) -> Unit,
     onUrlChange: (String) -> Unit,
@@ -43,9 +44,9 @@ internal fun SourceScreen(
         SourceField(name, onNameChange, placeholder = "Mi fuente", maximum = 80)
         Text("Dirección privada", color = sourceSubtle)
         SourceField(url, onUrlChange, placeholder = "https://…", maximum = 2_048, concealed = true)
-        Text("La dirección se oculta al escribir y no se guarda. Importar otra fuente con el mismo nombre reemplaza sus canales.", color = sourceSubtle)
+        Text("La dirección se oculta al escribir y no se guarda. Actualizar una fuente reemplaza sus canales.", color = sourceSubtle)
         Button(onClick = onSubmit, enabled = !loading && name.isNotBlank() && url.isNotBlank()) {
-            Text(if (loading) "Conectando…" else "Añadir fuente")
+            Text(if (loading) "Conectando…" else if (updating) "Actualizar fuente" else "Añadir fuente")
         }
         Text("Xtream se añadirá con protección específica de credenciales.", color = sourceSubtle)
     }

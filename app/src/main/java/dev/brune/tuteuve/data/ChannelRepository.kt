@@ -39,8 +39,19 @@ class ChannelRepository(private val context: Context) {
         val merged = (load().filterNot { it.sourceName == name } + result.channels)
             .distinctBy { it.id }
         require(merged.size <= 20_000) { "Demasiados canales" }
+        writeChannels(merged)
+        return merged
+    }
+
+    fun removeSource(name: String): List<Channel> {
+        val remaining = load().filterNot { it.sourceName == name }
+        writeChannels(remaining)
+        return remaining
+    }
+
+    private fun writeChannels(channels: List<Channel>) {
         val array = JSONArray()
-        merged.forEach { channel ->
+        channels.forEach { channel ->
             array.put(JSONObject().apply {
                 put("id", channel.id)
                 put("name", channel.name)
@@ -57,7 +68,6 @@ class ChannelRepository(private val context: Context) {
             store.failWrite(stream)
             throw error
         }
-        return merged
     }
 }
 

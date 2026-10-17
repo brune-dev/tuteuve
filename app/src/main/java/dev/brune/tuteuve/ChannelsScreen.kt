@@ -56,6 +56,7 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.Text
 import dev.brune.tuteuve.data.CatalogIndex
 import dev.brune.tuteuve.data.Channel
+import dev.brune.tuteuve.data.secureMediaSources
 
 private val panel = Color(0xFF142539)
 private val subtle = Color(0xFFA9BED1)
@@ -219,7 +220,7 @@ private fun PreviewVideo(channel: Channel, lifecycle: Lifecycle) {
     val context = LocalContext.current
     var failed by remember(channel) { mutableStateOf(false) }
     val player = remember(channel) {
-        ExoPlayer.Builder(context).build().apply {
+        ExoPlayer.Builder(context).setMediaSourceFactory(secureMediaSources()).build().apply {
             setMediaItem(MediaItem.fromUri(channel.streamUrl))
             prepare()
             playWhenReady = true
