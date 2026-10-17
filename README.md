@@ -10,6 +10,8 @@ Reproductor IPTV libre, local y pensado para Google TV. El objetivo es ofrecer n
 - Se diseña primero para el mando de Google TV, con foco visible y respuesta rápida incluso con listas grandes.
 - No integra analítica, telemetría ni anuncios. Las fuentes y credenciales permanecen en el dispositivo. Consulta los [controles y pruebas de seguridad](SECURITY.md).
 
+**Uso de fuentes:** tuteuve es una herramienta. No proporciona ni valida canales, listas o derechos de contenido. Cada persona debe asegurarse de que puede usar las fuentes que añade y las funciones que aplica. Consulta el [descargo de responsabilidad](DISCLAIMER.md).
+
 El [prototipo visual aprobado](https://iptv-sala-prototipo.xcorreogenerico.chatgpt.site/) documenta los flujos de interfaz. Sus emisiones, grabaciones y guías son simuladas; la app Android será una implementación nueva.
 
 ## Plan
