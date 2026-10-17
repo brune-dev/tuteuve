@@ -2,7 +2,7 @@
 
 ## Alcance y fecha objetivo
 
-La primera meta es una **alpha Android TV / Google TV instalable en 1–2 días de trabajo concentrado**, contando desde que empiece el desarrollo. Es una estimación de ejecución, sujeta a disponer de un Google TV o emulador, Android SDK y al menos una fuente de prueba autorizada. Publicar en Google Play y garantizar compatibilidad con todos los proveedores no forma parte de esa meta.
+La primera meta es una **alpha Android TV / Google TV instalable en 1–2 días de trabajo concentrado**, contando desde que empiece el desarrollo. Es una estimación de ejecución, sujeta a disponer de un Google TV o emulador, Android SDK y al menos una fuente de prueba autorizada. Publicar en Google Play y garantizar compatibilidad con todos los proveedores no forma parte de esa meta. Si las pruebas de seguridad o calidad revelan fallos, se amplía el plazo antes de publicar la APK.
 
 La alpha debe cubrir los journeys J1–J4. J5–J7 quedan planificados y se implementarán después de validar el flujo principal. Esta división evita presentar como grabación real o programación automática algo que la app todavía no puede cumplir.
 
@@ -25,15 +25,17 @@ La alpha debe cubrir los journeys J1–J4. J5–J7 quedan planificados y se impl
 - **Módulos de entrada** independientes para M3U, Xtream y XMLTV. La importación se hace fuera del hilo de interfaz y expone errores comprensibles.
 - **Persistencia local** de fuentes, carpetas, favoritos, listas y recientes. Las credenciales se protegen con una clave respaldada por Android Keystore y no aparecen en logs, informes ni exportaciones.
 - **Sin backend propio** en la alpha. El usuario aporta sus fuentes y la app se comunica directamente con ellas.
+- **Código mantenible:** módulos pequeños con responsabilidades claras, nombres coherentes, formateo y análisis estático en la compilación; comentarios breves para decisiones, límites y casos poco evidentes. Las pruebas deben cubrir parsers, persistencia, navegación con mando y reproducción.
+- **Privacidad y seguridad desde el inicio:** permisos mínimos, almacenamiento privado, ninguna analítica o telemetría y revisión de superficies expuestas y tráfico de red. El [modelo de amenazas y pruebas](SECURITY.md) es un criterio de salida.
 
 ## Plan de 2 días
 
 | Bloque | Trabajo | Salida comprobable |
 | --- | --- | --- |
-| Día 1, mañana | Proyecto Android, navegación TV, tema tuteuve, CI de compilación, datos de prueba propios. | APK de arranque, foco visible y navegación con mando. |
-| Día 1, tarde | Alta de fuentes M3U, parser de carpetas, catálogo virtualizado, Media3 y pantalla completa. | Importar y reproducir una fuente autorizada; errores y carga visibles. |
-| Día 2, mañana | Adaptador Xtream, XMLTV/EPG, guía filtrada, favoritos, listas y recientes persistentes. | Recorrido J1→J4 con datos reales de prueba. |
-| Día 2, tarde | Pruebas en Google TV/emulador, lista grande, red lenta, calidad/pistas, privacidad, README y APK alpha. | Release alpha con limitaciones conocidas y capturas/pruebas documentadas. |
+| Día 1, mañana | Proyecto Android, navegación TV, tema tuteuve, CI, reglas de calidad y datos de prueba propios. | APK de arranque, foco visible, navegación con mando y controles de análisis. |
+| Día 1, tarde | Alta de fuentes M3U, parser robusto de carpetas, catálogo virtualizado, Media3 y pantalla completa. | Importar y reproducir una fuente autorizada; errores y carga visibles; pruebas del parser. |
+| Día 2, mañana | Adaptador Xtream, XMLTV/EPG, guía filtrada, favoritos, listas y recientes persistentes. | Recorrido J1→J4 con datos reales de prueba, sin secretos en logs. |
+| Día 2, tarde | Pruebas en Google TV/emulador, lista grande, red lenta, calidad/pistas, privacidad, revisión de APK y tráfico, README. | APK alpha solo si superó las puertas de calidad y seguridad, con resultados documentados. |
 
 **Regla de corte:** si Xtream o XMLTV dependen de un proveedor no disponible, se entrega una alpha M3U funcional y se deja el adaptador correspondiente abierto en su issue. No se sustituye con datos simulados en la APK. La grabación real no se declara terminada sin archivo reproducible y prueba de parada al cambiar de app.
 
@@ -50,7 +52,8 @@ Los issues se crean en GitHub con criterios de aceptación verificables. `P0` bl
 | P0 | [#5 EPG XMLTV y guía por carpetas](https://github.com/brune-dev/tuteuve/issues/5) | J3 | #2, #3 |
 | P0 | [#6 Favoritos, listas propias y recientes persistentes](https://github.com/brune-dev/tuteuve/issues/6) | J2 | #3 |
 | P0 | [#7 Adaptador Xtream y protección de credenciales](https://github.com/brune-dev/tuteuve/issues/7) | J1 | #2, #4 |
-| P0 | [#8 Pruebas en TV, privacidad y APK alpha](https://github.com/brune-dev/tuteuve/issues/8) | J1–J4 | #1–#7, con condición Xtream |
+| P0 | [#8 Pruebas en TV, privacidad y APK alpha](https://github.com/brune-dev/tuteuve/issues/8) | J1–J4 | #1–#7 y #13, con condición Xtream |
+| P0 | [#13 Revisión de seguridad y privacidad](https://github.com/brune-dev/tuteuve/issues/13) | J1–J4 | #1–#7; bloquea #8 |
 | P1 | [#9 Grabación en primer plano: prueba de viabilidad](https://github.com/brune-dev/tuteuve/issues/9) | J5 | #4 |
 | P1 | [#10 Biblioteca y reproducción de archivos grabados](https://github.com/brune-dev/tuteuve/issues/10) | J5 | #9 |
 | P1 | [#11 Avisos de programa](https://github.com/brune-dev/tuteuve/issues/11) | J6 | #5 |
@@ -65,6 +68,8 @@ Los issues se crean en GitHub con criterios de aceptación verificables. `P0` bl
 - Favoritos y listas sobreviven al cierre y reinicio; las credenciales no aparecen en logs ni en el repositorio.
 - El reproductor informa de fallo de red, formato o pista no admitida y puede volver al catálogo con el mando.
 - Se publica el código, la licencia, instrucciones de compilación, una APK alpha y limitaciones conocidas.
+- El análisis estático y las pruebas relevantes pasan; la estructura del código y los comentarios explican decisiones no obvias.
+- Se completa el [plan de pruebas de seguridad](SECURITY.md) sin fugas, componentes expuestos innecesarios, telemetría ni permisos excesivos. Los hallazgos se resuelven antes de publicar la APK.
 
 ## Después de la alpha
 
