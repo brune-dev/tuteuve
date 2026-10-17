@@ -8,12 +8,13 @@ Reproductor IPTV libre, local y pensado para Google TV. El objetivo es ofrecer n
 - Funciona de forma local: no requiere cuenta de tuteuve, telemetría ni servidor propio.
 - Muestra la mejor variante que el dispositivo y la conexión puedan reproducir, con información real de resolución y FPS cuando la señal la ofrezca.
 - Se diseña primero para el mando de Google TV, con foco visible y respuesta rápida incluso con listas grandes.
+- No integra analítica, telemetría ni anuncios. Las fuentes y credenciales permanecen en el dispositivo. Consulta los [controles y pruebas de seguridad](SECURITY.md).
 
 El [prototipo visual aprobado](https://iptv-sala-prototipo.xcorreogenerico.chatgpt.site/) documenta los flujos de interfaz. Sus emisiones, grabaciones y guías son simuladas; la app Android será una implementación nueva.
 
 ## Plan
 
-[Journeys y calendario](ROADMAP.md) · [12 issues con criterios de aceptación](BACKLOG.md). La meta de **1–2 días de desarrollo** es una *alpha instalable*, no una versión de producción con todas las funciones. Grabación real, avisos, NAS y programación de grabaciones tienen issues separados y requieren pruebas adicionales en dispositivos y fuentes reales.
+[Journeys y calendario](ROADMAP.md) · [13 issues con criterios de aceptación](BACKLOG.md). La meta de **1–2 días de desarrollo** es una *alpha instalable*, sujeta a superar las pruebas de calidad y seguridad; no es una versión de producción con todas las funciones. Grabación real, avisos, NAS y programación de grabaciones tienen issues separados y requieren pruebas adicionales en dispositivos y fuentes reales.
 
 ## Estado del proyecto
 
